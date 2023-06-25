@@ -16,4 +16,4 @@ set(SOURCE_LIST
 
 add_library(mlcompiler STATIC ${SOURCE_LIST})
 target_include_directories(mlcompiler PUBLIC ../.. ${CMAKE_CURRENT_BINARY_DIR}/../..)
-target_link_libraries(mlcompiler PUBLIC mltensor fmt::fmt)
+target_link_libraries(mlcompiler PUBLIC mltensor)

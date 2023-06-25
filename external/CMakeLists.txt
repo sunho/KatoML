@@ -11,11 +11,7 @@ if (ENABLE_MLIR)
 #   add_subdirectory(llvm-project)
 endif()
 
-if (ENABLE_METAL)
-  add_subdirectory(metal-cmake)
+if (ENABLE_TESTS)
+  add_subdirectory(Catch2)
+  include(Catch)
 endif()
-
-add_subdirectory(Catch2)
-add_subdirectory(fmt)
-
-include(Catch)
