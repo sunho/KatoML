@@ -1,0 +1,3 @@
+add_subdirectory(helloworld)
+add_subdirectory(mnist)
+add_subdirectory(mnist_dnn)

@@ -1,0 +1,3 @@
+add_subdirectory(mlcompiler)
+add_subdirectory(mltensor)
+add_subdirectory(mlapp)
