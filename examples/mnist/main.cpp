@@ -42,6 +42,7 @@ struct MNistDigitNetwork {
 
   Device::Node cross_entropy() {
     auto y_ = forward();
+    std::cout << y_ << "\n";
     return graph.mean(-graph.sum(y * y_.log(), {1}));
   }
 

@@ -1,10 +1,9 @@
 #pragma once
-#include <fmt/format.h>
-#include <fmt/ostream.h>
 
 #include "ir.hpp"
 #include "value.hpp"
 #include "../tensor.hpp"
+#include "../utils/format.hpp"
 #include "visitor.hpp"
 
 namespace katoml {
@@ -76,67 +75,67 @@ inline std::ostream& operator<<(std::ostream& os, const Value<Backend>& value) {
 
 template<class Backend>
 void PrinterVisitor<Backend>::Add(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Add({}, {})", lhs, rhs);
+  os << format("Add({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Sub(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Sub({}, {})", lhs, rhs);
+  os << format("Sub({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Mul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Mul({}, {})", lhs, rhs);
+  os << format("Mul({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Div(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Div({}, {})", lhs, rhs);
+  os << format("Div({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Max(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Max({}, {})", lhs, rhs);
+  os << format("Max({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Min(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("Min({}, {})", lhs, rhs);
+  os << format("Min({}, {})", lhs, rhs);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::SoftMax(ir::Value<Backend> val) {
-  os << fmt::format("SoftMax({})", val);
+  os << format("SoftMax({})", val);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::LogSoftMax(ir::Value<Backend> val) {
-  os << fmt::format("LogSoftMax({})", val);
+  os << format("LogSoftMax({})", val);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Neg(ir::Value<Backend> val) {
-  os << fmt::format("Neg({})", val);
+  os << format("Neg({})", val);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::Log(ir::Value<Backend> val) {
-  os << fmt::format("Log({})", val);
+  os << format("Log({})", val);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::ReduceSum(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  os << fmt::format("ReduceSum({}, axis={})", val, axis);
+  os << format("ReduceSum({}, axis={})", val, axis);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::ReduceMean(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  os << fmt::format("ReduceMean({}, axis={})", val, axis);
+  os << format("ReduceMean({}, axis={})", val, axis);
 }
 
 template<class Backend>
 void PrinterVisitor<Backend>::MatMul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  os << fmt::format("MatMul({}, {})", lhs, rhs);
+  os << format("MatMul({}, {})", lhs, rhs);
 }
 
 }
