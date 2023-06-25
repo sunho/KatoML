@@ -4,6 +4,7 @@
 #include <vector>
 #include "core.hpp"
 #include "iter_utils.hpp"
+#include "katoml/mltensor/types.hpp"
 
 namespace katoml {
 namespace tensor {
@@ -170,41 +171,37 @@ public:
     }, get_element_type(res));
     return true;
   }
-  bool sum(HandleView res, HandleView res_std, HandleView val, const std::vector<int>& axis) {
+  bool sum(HandleView res, HandleView res_std, HandleView val) {
     call_with_type([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return a+b; };
-      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val), axis);
+      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val));
     }, get_element_type(res));
     return true;
   }
-  bool mean(HandleView res, HandleView res_std,HandleView val, const std::vector<int>& axis) {
+  bool mean(HandleView res, HandleView res_std,HandleView val, const AxisArray& axis) {
     call_with_type([&]<typename T>(type_wrapper<T>) {
-      size_t cnt = 1;
-      for (int i : axis) {
-        cnt *= tensors.at(val.handle).get_descriptor().get_shape()[i];
-      }
       const auto operation = [](T a, T b) { return a+b; };
-      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val), axis);
+      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val));
       const auto div = [](T a, size_t cnt) { return a/cnt; };
-      IterUtils::per_element_self<T, size_t, div>(to_wview(res), cnt);
+      IterUtils::per_element_self<T, size_t, div>(to_wview(res), calculate_reduced_count(val.shape, axis));
     }, get_element_type(res));
     return true;
   }
-  bool reduce_max(HandleView res, HandleView res_std, HandleView val, const std::vector<int>& axis) {
+  bool reduce_max(HandleView res, HandleView res_std, HandleView val) {
     call_with_type([&]<typename T>(type_wrapper<T>) {
       const auto init = [](T) { return std::numeric_limits<T>::min(); };
       IterUtils::per_element_self<T, init>(to_wview(res));
       const auto operation = [](T a, T b) { return std::max(a,b); };
-      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val), axis); 
+      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val)); 
     }, get_element_type(res));
     return true;
   }
-  bool reduce_min(HandleView res, HandleView res_std, HandleView val, const std::vector<int>& axis) {
+  bool reduce_min(HandleView res, HandleView res_std, HandleView val) {
     call_with_type([&]<typename T>(type_wrapper<T>) {
       const auto init = [](T) { return std::numeric_limits<T>::max(); };
       IterUtils::per_element_self<T, init>(to_wview(res));
       const auto operation = [](T a, T b) { return std::min(a,b); };
-      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val), axis);
+      IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val));
     }, get_element_type(res));
     return true;
   }

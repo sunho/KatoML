@@ -31,24 +31,23 @@ template<class Backend>
 class ForwardEvalVisitor {
 public:
   ForwardEvalVisitor(InterpComputeGraph<Backend>& cg) : cg(cg) {}
-  TTensorPtr evaluate(ir::Value<Backend> value) {
+  const TTensor& evaluate(ir::Value<Backend> value) {
     switch (value.get_type()) {
     case ir::ValueType::IntList:
     case ir::ValueType::Void:
     case ir::ValueType::Str:
       assert(false);
-      return {};
     case ir::ValueType::Node: {
       const auto& node = *value.as_node();
       if (cg.exists(node)) {
-        return cg.get(node);
+        return *cg.get(node);
       }
-      return cg.set(node, ir::NodeVisitorCaller<Backend, TTensorPtr, ForwardEvalVisitor<Backend>>().call(*this, node));
+      return *cg.set(node, ir::NodeVisitorCaller<Backend, TTensorPtr, ForwardEvalVisitor<Backend>>().call(*this, node));
     }
     case ir::ValueType::Tensor: 
-      return value.as_tensor();
+      return *value.as_tensor();
     case ir::ValueType::Var: 
-      return value.as_var()->get_tensor_ptr();
+      return value.as_var()->get_tensor();
     }
   }
   #define DECL_NODE(OP, ARGS, PARAMS, TYPES) inline TTensorPtr OP(ARGS);
@@ -92,22 +91,21 @@ public:
       return;
     }
   }
-  TTensorPtr evaluate(ir::Value<Backend> value) {
+  const TTensor& evaluate(ir::Value<Backend> value) {
     switch (value.get_type()) {
     case ir::ValueType::IntList:
     case ir::ValueType::Void:
     case ir::ValueType::Str:
       assert(false);
-      return {};
     case ir::ValueType::Node: {
       const auto& node = *value.as_node();
       assert(cg.exists(node));
-      return cg.get(node);
+      return *cg.get(node);
     }
     case ir::ValueType::Tensor: 
-      return value.as_tensor();
+      return *value.as_tensor();
     case ir::ValueType::Var: 
-      return value.as_var()->get_tensor_ptr();
+      return value.as_var()->get_tensor();
     }
   }
   #define DECL_NODE(OP, ARGS, PARAMS, TYPES) inline void OP(Diff& diff, ARGS);
@@ -133,7 +131,7 @@ public:
     Program(InterpEngineImpl& parent, ir::Value<Backend> value) : parent(parent), value(value) {}
     TTensor forward() {
       ForwardEvalVisitor visitor(cg);
-      return visitor.evaluate(value)->copy();
+      return visitor.evaluate(value).copy();
     }
     bool backward() {
       BackwardVisitor visitor(cg, parent.get().backend);
@@ -165,44 +163,32 @@ using InterpEngine = Engine<Backend, InterpEngineImpl<Backend>>;
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Add(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(*lhs_ + *rhs_);
+  return wrap(evaluate(lhs) + evaluate(rhs));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Sub(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(*lhs_ - *rhs_);
+  return wrap( evaluate(lhs) - evaluate(rhs));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Mul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(*lhs_ * *rhs_);
+  return wrap(evaluate(lhs) * evaluate(rhs));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Max(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(lhs_->max(*rhs_));
+  return wrap(evaluate(lhs).max(evaluate(rhs)));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Min(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(lhs_->min(*rhs_));
+  return wrap(evaluate(lhs).min(evaluate(rhs)));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Div(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(*lhs_ / *rhs_);
+  return wrap(evaluate(lhs) / evaluate(rhs));
 }
 
 template<class Backend>
@@ -213,63 +199,51 @@ static inline TTensor safe_log(const TTensor& val) {
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::SoftMax(ir::Value<Backend> val) {
-  const auto& val_ = *evaluate(val);
-  int target_axis = val_.get_ndims()-1;
-  auto max_ = val_.max({target_axis});
-  if (val_.get_shape().get_ndims() > 1)
-    max_.reshape(max_.get_shape().concat(tensor::Shape({1})));
+  const auto& val_ = evaluate(val);
+  auto max_ = val_.max({-1});
+  if (val_.get_ndims() > 1) max_.extend_axis();
   auto z = val_ - max_;
   auto exp_ = z.exp();
-  auto sum_ = exp_.sum({target_axis});
-  if (val_.get_shape().get_ndims() > 1)
-    sum_.reshape(sum_.get_shape().concat(tensor::Shape({1})));
+  auto sum_ = exp_.sum({-1});
+  if (val_.get_ndims() > 1) sum_.extend_axis();
   return wrap(exp_ / sum_);
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::LogSoftMax(ir::Value<Backend> val) {
-  const auto& val_ = *evaluate(val);
-  int target_axis = val_.get_ndims()-1;
-  auto max_ = val_.max({target_axis});
-  if (val_.get_shape().get_ndims() > 1)
-    max_.reshape(max_.get_shape().concat(tensor::Shape({1})));
-  auto z = val_ - max_;
-  auto exp_ = z.exp();
-  auto sum_ = exp_.sum({target_axis});
-  if (val_.get_shape().get_ndims() > 1)
-    sum_.reshape(sum_.get_shape().concat(tensor::Shape({1})));
-  return wrap(z - safe_log<Backend>(sum_));
+  const auto& val_ = evaluate(val);
+  auto mx = val_.max({-1});
+  if (val_.get_ndims() > 1) mx.extend_axis();
+  auto z = val_ - mx;
+  auto exp = z.exp();
+  auto sum = exp.sum({-1});
+  if (val_.get_ndims() > 1) sum.extend_axis();
+  return wrap(z - safe_log<Backend>(sum));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Log(ir::Value<Backend> val) {
-  auto val_ = evaluate(val);
-  return wrap(safe_log<Backend>(*val_));
+  return wrap(safe_log<Backend>( evaluate(val)));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::Neg(ir::Value<Backend> val) {
-  auto val_ = evaluate(val);
-  return wrap(-*val_);
+  return wrap(-evaluate(val));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::ReduceSum(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  auto val_ = evaluate(val);
-  return wrap(val_->sum(axis.as_int_list()));
+  return wrap(evaluate(val).sum(axis.as_int_list()));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::ReduceMean(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  auto val_ = evaluate(val);
-  return wrap(val_->mean(axis.as_int_list()));
+  return wrap(evaluate(val).mean(axis.as_int_list()));
 }
 
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::MatMul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs);
-  auto rhs_ = evaluate(rhs);
-  return wrap(lhs_->matmul(*rhs_));
+  return wrap(evaluate(lhs).matmul(evaluate(rhs)));
 }
 
 static inline std::vector<int> find_broadcast_axis(tensor::Shape vshape, tensor::Shape oshape) {
@@ -291,67 +265,47 @@ static inline std::vector<int> find_broadcast_axis(tensor::Shape vshape, tensor:
 
 template<class Backend>
 void BackwardVisitor<Backend>::Add(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  const auto& lhs_ = *evaluate(lhs);
-  const auto& rhs_ = *evaluate(rhs);
   auto process = [&](const TTensor& val, const TTensor& other) {
-    tensor::Shape vshape = val.get_datatype().get_shape();
-    tensor::Shape oshape = other.get_datatype().get_shape();
-    return diff.dRdY.sum(find_broadcast_axis(vshape, oshape));
+    return diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
   };
-  backward(lhs, process(lhs_, rhs_));
-  backward(rhs, process(rhs_, lhs_));
+  backward(lhs, process(evaluate(lhs), evaluate(rhs)));
+  backward(rhs, process(evaluate(rhs), evaluate(lhs)));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::Sub(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  const auto& lhs_ = *evaluate(lhs);
-  const auto& rhs_ = *evaluate(rhs);
   auto process = [&](const TTensor& val, const TTensor& other) {
-    tensor::Shape vshape = val.get_datatype().get_shape();
-    tensor::Shape oshape = other.get_datatype().get_shape();
-    return diff.dRdY.sum(find_broadcast_axis(vshape, oshape));
+    return diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
   };
-  backward(lhs, process(lhs_, rhs_));
-  backward(rhs, -process(rhs_, lhs_));
+  backward(lhs, process(evaluate(lhs), evaluate(rhs)));
+  backward(rhs, -process(evaluate(rhs), evaluate(lhs)));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::Max(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  const auto& lhs_ = *evaluate(lhs);
-  const auto& rhs_ = *evaluate(rhs);
   auto process = [&](const TTensor& val, const TTensor& other) {
-    tensor::Shape vshape = val.get_datatype().get_shape();
-    tensor::Shape oshape = other.get_datatype().get_shape();
-    return ((val >= other) * diff.dRdY).sum(find_broadcast_axis(vshape, oshape));
+    return ((val >= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
   };
-  backward(lhs, process(lhs_, rhs_));
-  backward(rhs, process(rhs_, lhs_));
+  backward(lhs, process(evaluate(lhs), evaluate(rhs)));
+  backward(rhs, process(evaluate(rhs), evaluate(lhs)));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::Min(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  const auto& lhs_ = *evaluate(lhs);
-  const auto& rhs_ = *evaluate(rhs);
   auto process = [&](const TTensor& val, const TTensor& other) {
-    tensor::Shape vshape = val.get_datatype().get_shape();
-    tensor::Shape oshape = other.get_datatype().get_shape();
-    return ((val <= other) * diff.dRdY).sum(find_broadcast_axis(vshape, oshape));
+    return ((val <= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
   };
-  backward(lhs, process(lhs_, rhs_));
-  backward(rhs, process(rhs_, lhs_));
+  backward(lhs, process(evaluate(lhs), evaluate(rhs)));
+  backward(rhs, process(evaluate(rhs), evaluate(lhs)));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::Mul(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  const auto& lhs_ = *evaluate(lhs);
-  const auto& rhs_ = *evaluate(rhs);
   auto process = [&](const TTensor& val, const TTensor& other) {
-    tensor::Shape vshape = val.get_datatype().get_shape();
-    tensor::Shape oshape = other.get_datatype().get_shape();
-    return (diff.dRdY * other).sum(find_broadcast_axis(vshape, oshape));
+    return (diff.dRdY * other).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
   };
-  backward(lhs, process(lhs_, rhs_));
-  backward(rhs, process(rhs_, lhs_));
+  backward(lhs, process(evaluate(lhs), evaluate(rhs)));
+  backward(rhs, process(evaluate(rhs), evaluate(lhs)));
 }
 
 template<class Backend>
@@ -366,14 +320,10 @@ void BackwardVisitor<Backend>::SoftMax(Diff& diff, ir::Value<Backend> val) {
 
 template<class Backend>
 void BackwardVisitor<Backend>::LogSoftMax(Diff& diff, ir::Value<Backend> val) {
-  const auto& val_ = *evaluate(val);
-  tensor::Shape shape = val_.get_datatype().get_shape();
-  tensor::DataType datatype = val_.get_datatype();
-  auto exp_ = val_.exp();
-  auto sum = diff.dRdY.sum({(int)diff.dRdY.get_shape().get_ndims()-1});
-  if (val_.get_shape().get_ndims() > 1)
-    sum.reshape(sum.get_shape().insert_axis(sum.get_shape().get_ndims()));
-  backward(val, -sum * exp_ + diff.dRdY);
+  const auto& val_ = evaluate(val);
+  auto sum = diff.dRdY.sum({-1});
+  if (val_.get_ndims() > 1) sum.extend_axis();
+  backward(val, -sum *  val_.exp() + diff.dRdY);
 }
 
 template<class Backend>
@@ -388,7 +338,7 @@ void BackwardVisitor<Backend>::Neg(Diff& diff, ir::Value<Backend> val) {
 template<class Backend>
 TTensor BackwardVisitor<Backend>::reduce_sum_impl(Diff& diff, const TTensor& val, ir::IntListValue<Backend> axis) {
   std::vector<int> axis_ = axis.as_int_list();
-  tensor::Shape shape = val.get_datatype().get_shape();
+  tensor::Shape shape = val.get_shape();
   std::vector<bool> ban(shape.get_ndims());
   tensor::Shape new_shape(shape.get_ndims());
   for (int i : axis_){
@@ -400,37 +350,25 @@ TTensor BackwardVisitor<Backend>::reduce_sum_impl(Diff& diff, const TTensor& val
     else
       new_shape[i] = shape[i];
   }
-  auto res = diff.dRdY.copy();
-  res.reshape(new_shape);
-  return backend.ones(val.get_datatype()) * res;
+  return backend.ones(val.get_datatype()) * diff.dRdY.reshaped(new_shape);
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::ReduceSum(Diff& diff, ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  const auto& val_ = *evaluate(val);
-  backward(val, reduce_sum_impl(diff, val_, axis));
+  backward(val, reduce_sum_impl(diff, evaluate(val), axis));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::ReduceMean(Diff& diff, ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
-  const auto& val_ = *evaluate(val);
-  int64_t total = 1;
-  tensor::Shape shape = val_.get_datatype().get_shape();
-  std::vector<int> axis_ = axis.as_int_list();
-  for (int i : axis_) {
-    total *= shape[i];
-  }
-  backward(val, reduce_sum_impl(diff, val_, axis) / backend.constant(val_.get_datatype().get_element_type(), total));
+  const auto& val_ = evaluate(val);
+  int64_t total = tensor::calculate_reduced_count(val_.get_shape(), axis.as_int_list());
+  backward(val, reduce_sum_impl(diff, val_, axis) / backend.constant(val_.get_element_type(), total));
 }
 
 template<class Backend>
 void BackwardVisitor<Backend>::MatMul(Diff& diff, ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
-  auto lhs_ = evaluate(lhs)->copy();
-  lhs_.transpose();
-  auto rhs_ = evaluate(rhs)->copy();
-  rhs_.transpose();
-  backward(lhs, diff.dRdY.matmul(rhs_));
-  backward(rhs, lhs_.matmul(diff.dRdY));
+  backward(lhs, diff.dRdY.matmul(evaluate(rhs).transposed()));
+  backward(rhs, evaluate(lhs).transposed().matmul(diff.dRdY));
 }
 
 }

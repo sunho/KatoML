@@ -1,6 +1,8 @@
 #pragma once
 #include <cassert>
 #include <functional>
+#include <limits>
+#include <numeric>
 #include <type_traits>
 #include <vector>
 #include <array>
@@ -42,7 +44,8 @@ inline size_t get_element_type_size(ElementType type) {
   }
 }
 
-static const std::vector<int> AllAxis = {-1};
+using AxisArray = std::vector<int>;
+const static AxisArray AllAxis = {MAX_DIM};
 
 class Shape {
 using Array = std::array<int64_t, MAX_DIM>;
@@ -127,6 +130,10 @@ public:
   }
   Shape insert_axis(int axis) const {
     Shape res(ndims+1);
+    if (axis < 0) {
+      axis += ndims;
+    }
+    ASSERT(axis >= 0 && axis <= ndims, "shape axis out of bound")
     for (int i=0;i<ndims;i++){
       if (i < axis)
         res[i] = num_elements[i];
@@ -136,18 +143,19 @@ public:
     res[axis] = 1;
     return res;
   }
+  Shape extend_axis() const {
+    return insert_axis(ndims);
+  }
   Shape reverse() const {
     Shape res = *this;
     std::reverse(std::begin(res.num_elements), std::begin(res.num_elements)+ndims);
     return res;
   }
-  Shape reduce(const std::vector<int>& axis) const {
+  Shape reduce(AxisArray axis) const {
     if (axis.size() == 0) {
       return *this;
     }
-    if (axis == AllAxis) {
-      return Shape({1});
-    }
+    axis = normalize_axis(axis);
     CHECK_OR_THROW(std::all_of(std::begin(axis), std::end(axis), [&](int i) {
       return i >= 0 && i < ndims;
     }), InvalidReduceAxisError)
@@ -162,6 +170,17 @@ public:
     if (res.get_ndims() == 0)
       return Shape({1});
     return res;
+  }
+  AxisArray normalize_axis(AxisArray axis) const {
+    if (axis == AllAxis) {
+      axis.assign(ndims, 0);
+      std::iota(std::begin(axis), std::end(axis), 0);
+      return axis;
+    }
+    for (int& i : axis) {
+      if (i < 0) i += ndims;
+    }
+    return axis;
   }
   bool compatible(const Shape& other) const {
     if (get_ndims() != other.get_ndims()) return false;
@@ -199,6 +218,15 @@ inline std::ostream& operator<<(std::ostream& os, Shape shape) {
       os << shape[i];
   }
   return os << "]";
+}
+
+static inline size_t calculate_reduced_count(Shape shape, AxisArray axis){
+  axis = shape.normalize_axis(axis);
+  size_t cnt = 1;
+  for (int i : axis) {
+    cnt *= shape[i];
+  }
+  return cnt;
 }
 
 class DataType {

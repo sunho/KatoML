@@ -149,7 +149,7 @@ public:
   }
 
   template<class T, auto operation>
-  static void reduce(WOffsetView res, ROffsetView val, const std::vector<int>& axis) {
+  static void reduce(WOffsetView res, ROffsetView val) {
     reduce_iterate<T,operation>(0, res, val);
   }
 

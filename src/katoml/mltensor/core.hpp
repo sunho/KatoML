@@ -107,20 +107,21 @@ template<IBackend Backend>
 class TensorBase {
 using BackendHandle = typename Backend::Handle;
 public:
-  TensorBase(Backend& backend, BackendHandle handle) : backend(backend), handle(handle) {}
+  TensorBase(Backend& backend, BackendHandle handle, bool is_view = false) : backend(backend), handle(handle), is_view(is_view) {}
   TensorBase(const TensorBase& other) = delete;
   TensorBase& operator=(const TensorBase& other) = delete;
-  TensorBase(TensorBase&& other) : backend(other.backend), handle(other.handle) {
+  TensorBase(TensorBase&& other) : backend(other.backend), handle(other.handle), is_view(other.is_view) {
     other.handle = {};
   }
   TensorBase& operator=(TensorBase&& other) {
     backend = std::move(other.backend);
     handle = other.handle;
+    is_view = other.is_view;
     other.handle = {};
     return *this;
   }
   ~TensorBase() {
-    if (handle) {
+    if (handle && !is_view) {
       backend.get().release(handle);
     }
   }
@@ -211,23 +212,39 @@ public:
   TensorBase diag() const {
     return TensorBase(backend.get(), backend.get().diag(handle));
   }
-  TensorBase sum(const std::vector<int>& axis = AllAxis) const {
+  TensorBase sum(const AxisArray& axis = AllAxis) const {
     return TensorBase(backend.get(), backend.get().sum(handle, axis));
   }
-  TensorBase mean(const std::vector<int>& axis = AllAxis) const {
+  TensorBase mean(const AxisArray& axis = AllAxis) const {
     return TensorBase(backend.get(), backend.get().mean(handle, axis));
   }
-  TensorBase max(const std::vector<int>& axis = AllAxis) const {
+  TensorBase max(const AxisArray& axis = AllAxis) const {
     return TensorBase(backend.get(), backend.get().max(handle, axis));
   }
-  TensorBase min(const std::vector<int>& axis = AllAxis) const {
+  TensorBase min(const AxisArray& axis = AllAxis) const {
     return TensorBase(backend.get(), backend.get().min(handle, axis));
   }
   void reshape(Shape shape) {
     handle = backend.get().reshape(handle, shape);
   }
+  TensorBase reshaped(Shape shape) const {
+    auto res = backend.get().reshape(handle, shape);
+    if (handle == res) return TensorBase(backend.get(), res, true);
+    return TensorBase(backend.get(), res);
+  }
   void transpose() {
     handle = backend.get().transpose(handle);
+  }
+  TensorBase transposed() const {
+    auto res = backend.get().transpose(handle);
+    if (handle == res) return TensorBase(backend.get(), res, true);
+    return TensorBase(backend.get(), res);
+  }
+  void extend_axis() {
+    reshape(get_shape().extend_axis());
+  }
+  TensorBase axis_extended() const {
+    return reshaped(get_shape().extend_axis());
   }
   TensorBase& operator+=(const TensorBase& rhs) {
     backend_check(rhs);
@@ -289,6 +306,7 @@ protected:
   }
 
   std::reference_wrapper<Backend> backend;
+  bool is_view;
   BackendHandle handle;
 };
 
@@ -464,7 +482,7 @@ static inline Shape calculate_reshape_shape(Shape old, Shape newi) {
 }
 
 template <typename T>
-concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle eh, TensorDescriptor desc, std::vector<int> axis, Constant val, bool& res_bool) {
+concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle eh, TensorDescriptor desc, AxisArray axis, Constant val, bool& res_bool) {
   {v.relase(eh)};
   {v.allocate(desc)} -> std::same_as<typename T::Handle>;
   {v.get_data(eh)} -> std::same_as<void*>;
@@ -477,10 +495,10 @@ concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle e
   {v.less(h, h, h)} -> std::same_as<bool>;
   {v.less_eq(h, h, h)} -> std::same_as<bool>;
   {v.matmul(h, h, h)} -> std::same_as<bool>;
-  {v.sum(h, h, h, axis)} -> std::same_as<bool>;
+  {v.sum(h, h, h)} -> std::same_as<bool>;
   {v.mean(h, h, h, axis)} -> std::same_as<bool>;
-  {v.reduce_max(h, h, h, axis)} -> std::same_as<bool>;
-  {v.reduce_min(h, h, h, axis)} -> std::same_as<bool>;
+  {v.reduce_max(h, h, h)} -> std::same_as<bool>;
+  {v.reduce_min(h, h, h)} -> std::same_as<bool>;
   {v.copy(h, h)} -> std::same_as<bool>;
   {v.diag(h, h)} -> std::same_as<bool>;
   {v.fill(h, val)} -> std::same_as<bool>;
@@ -740,28 +758,28 @@ private:
     unwrap(executor.neg(res.view(), val.view()));
     return res;
   }
-  Handle sum(Handle val, const std::vector<int>& axis) {
+  Handle sum(Handle val, AxisArray axis) {
     Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
     Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.sum(res.view(), res_.view(), val.view(), axis));
+    unwrap(executor.sum(res.view(), res_.view(), val.view()));
     return res;
   }
-  Handle mean(Handle val, const std::vector<int>& axis) {
+  Handle mean(Handle val, AxisArray axis) {
     Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
     Handle res_ = reduce_prepare(res, val, axis);
     unwrap(executor.mean(res.view(), res_.view(), val.view(), axis));
     return res;
   }
-  Handle max(Handle val, const std::vector<int>& axis) {
+  Handle max(Handle val, AxisArray axis) {
     Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
     Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.reduce_max(res.view(), res_.view(), val.view(), axis));
+    unwrap(executor.reduce_max(res.view(), res_.view(), val.view()));
     return res;
   }
-  Handle min(Handle val, const std::vector<int>& axis) {
+  Handle min(Handle val, AxisArray axis) {
     Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
     Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.reduce_min(res.view(), res_.view(), val.view(), axis));
+    unwrap(executor.reduce_min(res.view(), res_.view(), val.view()));
     return res;
   }
   Tensor make_tensor(Handle handle) { return Tensor(*this, handle); }
@@ -840,22 +858,19 @@ private:
     return res;
   }
 
-  Handle reduce_prepare(Handle res, Handle& val, const std::vector<int>& axis) {
+  Handle reduce_prepare(Handle res, Handle& val, AxisArray& axis) {
+    axis = val.get_shape().normalize_axis(axis);
     Shape rshape = res.get_shape(), vshape = val.get_shape();
     if (rshape != vshape) {
       Strides new_strides(vshape.get_ndims());
-      if (axis == AllAxis) {
-        res.strides = new_strides;
-      } else {
-        std::vector<bool> ban(val.get_ndims());
-        for (int i : axis) ban[i] = true;
-        int ptr = 0;
-        for (int i=0;i<val.get_ndims();i++) {
-          if (!ban[i])
-            new_strides[i] = res.strides[ptr++];
-        }
-        res.strides = new_strides;
+      std::vector<bool> ban(val.get_ndims());
+      for (int i : axis) ban[i] = true;
+      int ptr = 0;
+      for (int i=0;i<val.get_ndims();i++) {
+        if (!ban[i])
+          new_strides[i] = res.strides[ptr++];
       }
+      res.strides = new_strides;
     }
     return res;
   }

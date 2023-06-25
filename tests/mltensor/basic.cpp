@@ -51,6 +51,62 @@ TEST_CASE( "Mul is computed", "[cpu]" ) {
   REQUIRE(row * col == backend.tensor<int>({{10,20,30},{20,40,60},{30,60,90}}));
 }
 
+TEST_CASE( "Less is computed", "[cpu]" ) {
+  auto A = backend.tensor<int>({{4,2},{2,4}});
+  auto B = backend.tensor<int>({{2,3},{3,2}});
+  REQUIRE((A < B) == backend.tensor<int>({{0,1},{1,0}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({2,3});
+  REQUIRE((A < B) == backend.tensor<int>({{0,1},{0,0}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({{2},{3}});
+  REQUIRE((A < B) == backend.tensor<int>({{0,0},{1,0}}));
+}
+
+TEST_CASE( "Less or eq is computed", "[cpu]" ) {
+  auto A = backend.tensor<int>({{4,2},{2,4}});
+  auto B = backend.tensor<int>({{2,2},{3,2}});
+  REQUIRE((A <= B) == backend.tensor<int>({{0,1},{1,0}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({2,3});
+  REQUIRE((A <= B) == backend.tensor<int>({{0,1},{1,0}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({{2},{3}});
+  REQUIRE((A <= B) == backend.tensor<int>({{0,1},{1,0}}));
+}
+
+TEST_CASE( "More is computed", "[cpu]" ) {
+  auto A = backend.tensor<int>({{4,2},{2,4}});
+  auto B = backend.tensor<int>({{2,3},{3,2}});
+  REQUIRE((A > B) == backend.tensor<int>({{1,0},{0,1}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({2,3});
+  REQUIRE((A > B) == backend.tensor<int>({{1,0},{0,1}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({{1},{2}});
+  REQUIRE((A > B) == backend.tensor<int>({{1,1},{0,1}}));
+}
+
+TEST_CASE( "More or eq is computed", "[cpu]" ) {
+  auto A = backend.tensor<int>({{4,2},{2,4}});
+  auto B = backend.tensor<int>({{2,3},{3,2}});
+  REQUIRE((A >= B) == backend.tensor<int>({{1,0},{0,1}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({2,3});
+  REQUIRE((A >= B) == backend.tensor<int>({{1,0},{1,1}}));
+
+  A = backend.tensor<int>({{4,2},{2,4}});
+  B = backend.tensor<int>({{1},{2}});
+  REQUIRE((A >= B) == backend.tensor<int>({{1,1},{1,1}}));
+}
+
 TEST_CASE( "Matmul is computed", "[cpu]" ) {
   auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   auto B = backend.tensor<int>({{4,5,6},{6,5,4},{4,6,5}});
@@ -71,6 +127,9 @@ TEST_CASE( "Reshape is working", "[cpu]" ) {
   A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   A.reshape(Shape({1,1,Shape::Any}));
   REQUIRE(A == backend.tensor<int>({{{1,2,3,3,2,1,1,2,3}}}));
+
+  auto reshaped = A.reshaped(Shape({3,3}));
+  REQUIRE(reshaped == backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}}));
 }
 
 TEST_CASE( "Reduce sum is working", "[cpu]" ) {
@@ -78,12 +137,15 @@ TEST_CASE( "Reduce sum is working", "[cpu]" ) {
   REQUIRE(A.sum().at<int>(0) == 18);
   REQUIRE(A.sum({0}) == backend.tensor<int>({5,6,7}));
   REQUIRE(A.sum({1}) == backend.tensor<int>({6,6,6}));
+  REQUIRE(A.sum({-2}) == backend.tensor<int>({5,6,7}));
+  REQUIRE(A.sum({-1}) == backend.tensor<int>({6,6,6}));
 }
 
 TEST_CASE( "Transpose is working", "[cpu]" ) {
   auto A = backend.tensor<int>({{1,2,3},{3,2,1},{2,1,3}});
   A.transpose();
   REQUIRE(A == backend.tensor<int>({{1, 3, 2}, {2, 2, 1}, {3, 1, 3}}));
+  REQUIRE(A.transposed() ==  backend.tensor<int>({{1,2,3},{3,2,1},{2,1,3}}));
 }
 
 TEST_CASE( "Mean is working", "[cpu]" ) {
@@ -95,4 +157,6 @@ TEST_CASE( "Mean is working", "[cpu]" ) {
   
   REQUIRE(B.mean({0}) == backend.tensor<float>({4,5,6}));
   REQUIRE(B.mean({1}) == backend.tensor<float>({2,5,8}));
+  REQUIRE(B.mean({-2}) == backend.tensor<float>({4,5,6}));
+  REQUIRE(B.mean({-1}) == backend.tensor<float>({2,5,8}));
 }
