@@ -37,8 +37,11 @@ public:
     Strides strides{};
   };
   void relase(Handle handle) {
-    assert(tensors.find(handle) != tensors.end());
+    ASSERT(tensors.find(handle) != tensors.end(), "double releasing handle")
     tensors.erase(handle);
+  }
+  bool is_alive(Handle handle) {
+    return tensors.find(handle) != tensors.end();
   }
   Handle allocate(TensorDescriptor descriptor) {
     return tensors.emplace(next_id++, descriptor).first->first;
@@ -53,10 +56,24 @@ public:
     }, get_element_type(res));
     return true;
   }
+  bool add_assign(HandleView res, HandleView rhs) {
+    call_with_type([&]<typename T>(type_wrapper<T>) {
+      const auto operation = [](T a, T b) { return a + b; };
+      IterUtils::per_element_self_bin_op<T, operation>(to_wview(res), to_rview(rhs));
+    }, get_element_type(res));
+    return true;
+  }
   bool sub(HandleView res, HandleView lhs, HandleView rhs) {
     call_with_type([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return a - b; };
       IterUtils::per_element_bin_op<T, operation>(to_wview(res), to_rview(lhs), to_rview(rhs));
+    }, get_element_type(res));
+    return true;
+  }
+  bool sub_assign(HandleView res, HandleView rhs) {
+    call_with_type([&]<typename T>(type_wrapper<T>) {
+      const auto operation = [](T a, T b) { return a - b; };
+      IterUtils::per_element_self_bin_op<T, operation>(to_wview(res), to_rview(rhs));
     }, get_element_type(res));
     return true;
   }

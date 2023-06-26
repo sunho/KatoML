@@ -18,6 +18,38 @@ static int64_t MAX_TENSOR_LOG_LIMIT = 128;
 template <typename T> concept signed_type = std::is_signed_v<T>; 
 
 template <typename T>
+concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle eh, TensorDescriptor desc, AxisArray axis, Constant val, bool& res_bool) {
+  {v.relase(eh)};
+  {v.allocate(desc)} -> std::same_as<typename T::Handle>;
+  {v.get_data(eh)} -> std::same_as<void*>;
+  {v.is_alive(eh)} -> std::same_as<bool>;
+  {v.add(h, h, h)} -> std::same_as<bool>;
+  {v.add_assign(h, h)} -> std::same_as<bool>;
+  {v.sub(h, h, h)} -> std::same_as<bool>;
+  {v.sub_assign(h, h)} -> std::same_as<bool>;  
+  {v.mul(h, h, h)} -> std::same_as<bool>;
+  {v.div(h, h, h)} -> std::same_as<bool>;
+  {v.max(h, h, h)} -> std::same_as<bool>;
+  {v.min(h, h, h)} -> std::same_as<bool>;
+  {v.less(h, h, h)} -> std::same_as<bool>;
+  {v.less_eq(h, h, h)} -> std::same_as<bool>;
+  {v.matmul(h, h, h)} -> std::same_as<bool>;
+  {v.sum(h, h, h)} -> std::same_as<bool>;
+  {v.mean(h, h, h, axis)} -> std::same_as<bool>;
+  {v.reduce_max(h, h, h)} -> std::same_as<bool>;
+  {v.reduce_min(h, h, h)} -> std::same_as<bool>;
+  {v.copy(h, h)} -> std::same_as<bool>;
+  {v.diag(h, h)} -> std::same_as<bool>;
+  {v.fill(h, val)} -> std::same_as<bool>;
+  {v.equals(res_bool, h, h)} -> std::same_as<bool>;
+  {v.near_equals(res_bool, h, h)} -> std::same_as<bool>;
+  {v.clip(h, h, val, val)} -> std::same_as<bool>;
+  {v.log(h, h)} -> std::same_as<bool>;
+  {v.exp(h, h)} -> std::same_as<bool>;
+  {v.neg(h, h)} -> std::same_as<bool>;
+};
+
+template <typename T>
 concept IHandle = requires(T v) {
   {v.get_ndims()} -> std::convertible_to<size_t>;
   {v.get_element_type()} -> std::convertible_to<ElementType>;
@@ -28,77 +60,6 @@ concept IHandle = requires(T v) {
 template <typename T>
 concept IBackend = requires(T v, typename T::Handle h) {
   requires IHandle<typename T::Handle>;
-};
-
-template <typename T>
-class type_wrapper {
-public:
-};
-
-static inline void call_with_type(auto&& func, ElementType element_type) {
-  switch (element_type) {
-  #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
-  case ElementType::enum_name: \
-  func(type_wrapper<tyty>());\
-  break;
-  #include "element_type.inc"
-  #undef ELEMENT_TYPE
-  case ElementType::None:
-    assert(false);
-    break;
-  }
-}
-
-#define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
-static inline ElementType find_element_type(type_wrapper<tyty>) {\
-  return ElementType::enum_name;\
-}
-#include "element_type.inc"
-#undef ELEMENT_TYPE
-
-template<class... Ts>
-struct overloaded : Ts... { using Ts::operator()...; };
-template<class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
-class Constant {
-enum class ConstantType { None, Min, Max, Value };
-public:
-  Constant() = default;
-  #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) Constant(tyty val) : val(val), type(ConstantType::Value) {}
-  #include "element_type.inc"
-  #undef ELEMENT_TYPE
-  template<typename T> T cast() const {
-    if (type == ConstantType::None)
-      throw NullConstantError();
-    if (type == ConstantType::Max) 
-      return std::numeric_limits<T>::max();
-    if (type == ConstantType::Min) 
-      return std::numeric_limits<T>::min();
-    return std::visit(overloaded {
-      [](std::monostate) { 
-        panic("monostate tensor constant");
-        return static_cast<T>(0);
-      },
-      [](auto v) {return static_cast<T>(v); }
-    }, val);
-  }
-  static inline Constant max() {
-    return Constant(ConstantType::Max);
-  }
-  static inline Constant min() {
-    return Constant(ConstantType::Min);
-  }
-private:
-  Constant(ConstantType type) : type(type) {}
-  using Inner = std::variant<
-    #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) tyty,
-    #include "element_type.inc"
-    #undef ELEMENT_TYPE
-    std::monostate
-  >;
-  ConstantType type { ConstantType::None };
-  Inner val;
 };
 
 static Constant NEAR_EQUAL_EPS = 1e-10; 
@@ -125,7 +86,6 @@ public:
       backend.get().release(handle);
     }
   }
-  TensorBase copy() const { return TensorBase(backend, backend.get().copy(handle)); }
   int get_ndims() const { return handle.get_ndims(); }
   ElementType get_element_type() const { return handle.get_element_type(); }
   Shape get_shape() const { return handle.get_shape(); }
@@ -152,120 +112,93 @@ public:
     ASSERT(i == get_ndims(), "tensor at index not matching dimension");
     return *reinterpret_cast<T*>(data + offset);
   }
-  TensorBase operator+(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().add(handle, rhs.handle));
+
+  #define BINOP_NO_CONST(def_name, func_name)\
+  TensorBase def_name(const TensorBase& rhs) const {\
+    sanity_check(rhs);\
+    return TensorBase(backend.get(), backend.get().func_name(handle, rhs.handle));\
   }
-  TensorBase operator-(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().sub(handle, rhs.handle));
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
+  #define BINOP(def_name, func_name) \
+  BINOP_NO_CONST(def_name, func_name) \
+  TensorBase def_name(Constant rhs) const {\
+    sanity_check();\
+    auto constant = backend.get().constant(get_element_type(), rhs);\
+    return def_name(constant);\
   }
-  TensorBase operator*(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().mul(handle, rhs.handle));
+  #define BINOP_CPP(def_name, func_name) \
+  BINOP(def_name, func_name)\
+  friend TensorBase def_name(Constant lhs, const TensorBase& rhs) {\
+    auto constant = rhs.backend.get().constant(rhs.get_element_type(), lhs);\
+    return constant.def_name(rhs);\
   }
-  TensorBase operator/(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().div(handle, rhs.handle));
+  #define UNIOP(def_name, func_name) \
+  TensorBase def_name() const {\
+    sanity_check();\
+    return TensorBase(backend.get(), backend.get().func_name(handle));\
   }
-  TensorBase operator<(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().less(handle, rhs.handle));
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #define REDUCEOP(def_name, func_name) \
+  TensorBase def_name(const AxisArray& axis = AllAxis) const {\
+    sanity_check();\
+    return TensorBase(backend.get(), backend.get().func_name(handle, axis));\
   }
-  TensorBase operator<=(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().less_eq(handle, rhs.handle));
+  #define SELFOP_CPP(def_name, func_name) \
+  TensorBase& def_name(const TensorBase& rhs) {\
+    sanity_check(rhs);\
+    assign_handle(backend.get().func_name(handle, rhs.handle));\
+    return *this;\
   }
-  TensorBase operator>(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().less(rhs.handle, handle));
+  #include "operators.inc"
+
+  bool operator==(const TensorBase& rhs) const {
+    sanity_check(rhs);
+    return backend.get().equals(handle, rhs.handle);
   }
-  TensorBase operator>=(const TensorBase& rhs) const {
-    backend_check(rhs);
-    return TensorBase(backend.get(), backend.get().less_eq(rhs.handle, handle));
-  }
-  TensorBase max(const TensorBase& rhs) const {
-    return TensorBase(backend.get(), backend.get().max(handle, rhs.handle));
-  }
-  TensorBase min(const TensorBase& rhs) const {
-    return TensorBase(backend.get(), backend.get().min(handle, rhs.handle));
-  }
-  TensorBase operator-() const {
-    return TensorBase(backend.get(), backend.get().neg(handle));
-  }
-  TensorBase matmul(const TensorBase& other) const {
-    backend_check(other);
-    return TensorBase(backend.get(), backend.get().matmul(handle, other.handle));
-  }
-  TensorBase log() const {
-    return TensorBase(backend.get(), backend.get().log(handle));
-  }
-  TensorBase exp() const {
-    return TensorBase(backend.get(), backend.get().exp(handle));
+  bool near_equals(const TensorBase& rhs) const {
+    sanity_check(rhs);
+    return backend.get().near_equals(handle, rhs.handle);
   }
   TensorBase clip(Constant mn, Constant mx) const {
+    sanity_check();
     return TensorBase(backend.get(), backend.get().clip(handle, mn, mx));
   }
-  void fill(Constant val) {
-    backend.get().fill(handle, val);
-  }
-  TensorBase diag() const {
-    return TensorBase(backend.get(), backend.get().diag(handle));
-  }
-  TensorBase sum(const AxisArray& axis = AllAxis) const {
-    return TensorBase(backend.get(), backend.get().sum(handle, axis));
-  }
-  TensorBase mean(const AxisArray& axis = AllAxis) const {
-    return TensorBase(backend.get(), backend.get().mean(handle, axis));
-  }
-  TensorBase max(const AxisArray& axis = AllAxis) const {
-    return TensorBase(backend.get(), backend.get().max(handle, axis));
-  }
-  TensorBase min(const AxisArray& axis = AllAxis) const {
-    return TensorBase(backend.get(), backend.get().min(handle, axis));
-  }
-  void reshape(Shape shape) {
-    handle = backend.get().reshape(handle, shape);
-  }
+  
+  // ==========================================
+  // * operations that can return tensor view *
   TensorBase reshaped(Shape shape) const {
-    auto res = backend.get().reshape(handle, shape);
-    if (handle == res) return TensorBase(backend.get(), res, true);
-    return TensorBase(backend.get(), res);
-  }
-  void transpose() {
-    handle = backend.get().transpose(handle);
+    sanity_check();
+    return wrap(backend.get().reshape(handle, shape));
   }
   TensorBase transposed() const {
-    auto res = backend.get().transpose(handle);
-    if (handle == res) return TensorBase(backend.get(), res, true);
-    return TensorBase(backend.get(), res);
-  }
-  void extend_axis() {
-    reshape(get_shape().extend_axis());
+    sanity_check();
+    return wrap(backend.get().transpose(handle));
   }
   TensorBase axis_extended() const {
+    sanity_check();
     return reshaped(get_shape().extend_axis());
   }
-  TensorBase& operator+=(const TensorBase& rhs) {
-    backend_check(rhs);
-    BackendHandle tmp = handle;
-    handle = backend.get().add(tmp, rhs.handle);
-    backend.get().release(tmp);
-    return *this;
+  // ==========================================
+
+  // =============================
+  // * self modifying operations *
+  void fill(Constant val) {
+    sanity_check();
+    backend.get().fill(handle, val);
   }
-  TensorBase& operator-=(const TensorBase& rhs) {
-    backend_check(rhs);
-    BackendHandle tmp = handle;
-    handle = backend.get().sub(tmp, rhs.handle);
-    backend.get().release(tmp);
-    return *this;
+  void reshape(Shape shape) {
+    sanity_check();
+    assign_handle(backend.get().reshape(handle, shape));
   }
-  bool operator==(const TensorBase& other) const {
-    return backend.get().equals(handle, other.handle);
+  void transpose() {
+    assign_handle(backend.get().transpose(handle));
   }
-  bool near_equals(const TensorBase& other) const {
-    return backend.get().near_equals(handle, other.handle);
+  void extend_axis() {
+    sanity_check();
+    reshape(get_shape().extend_axis());
   }
+  // =============================
+
   friend std::ostream& operator<<(std::ostream& os, const TensorBase& tensor) {
     std::ostringstream ss("");
     call_with_type([&]<typename T>(type_wrapper<T>) {
@@ -300,11 +233,29 @@ protected:
   const void* get_data() const {
     return backend.get().get_data(handle);
   }
-
-  void backend_check(const TensorBase& other) const {
-    CHECK_OR_THROW(&backend.get() == &other.backend.get(), BackendMismatchError)
+  TensorBase wrap(BackendHandle newi) const {
+    if (handle == newi) 
+      return TensorBase(backend.get(), newi, true);
+    return TensorBase(backend.get(), newi);
   }
-
+  void assign_handle(BackendHandle newi) {
+    CHECK_OR_THROW(!is_view || handle == newi, ViewAssignAllocationError)
+    if (handle != newi) {
+      backend.get().release(handle);
+    }
+    handle = newi;
+  }
+  void sanity_check() const {
+    if (is_view)
+      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
+  }
+  void sanity_check(const TensorBase& other) const {
+    CHECK_OR_THROW(&backend.get() == &other.backend.get(), BackendMismatchError)
+    if (is_view)
+      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
+    if (other.is_view)
+      CHECK_OR_THROW(backend.get().is_alive(other.handle), UseAfterFreeError)
+  }
   std::reference_wrapper<Backend> backend;
   bool is_view;
   BackendHandle handle;
@@ -337,44 +288,62 @@ public:
   T operator()(Index... index) const { return TensorBase<Backend>::template at<T>(index...); }
   template<signed_type... Index>
   T& operator()(Index...index) { return TensorBase<Backend>::template at<T>(index...); }
-  TypedTensorBase copy() const { 
-    return std::move(TensorBase<Backend>::copy());
+
+  #define BINOP_NO_CONST(def_name, func_name)\
+  TensorBase<Backend> def_name(const TensorBase<Backend>& rhs) const = delete;\
+  TypedTensorBase def_name(const TypedTensorBase& rhs) const {\
+    return TensorBase<Backend>::def_name(rhs);\
   }
-  TensorBase<Backend> operator+(const TensorBase<Backend>& rhs) const = delete;
-  TypedTensorBase operator+(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::operator+(rhs);
+  #define BINOP(def_name, func_name) \
+  BINOP_NO_CONST(def_name, func_name) \
+  TypedTensorBase def_name(Constant rhs) const {\
+    return TensorBase<Backend>::def_name(rhs);\
   }
-  TensorBase<Backend> operator-(const TensorBase<Backend>& rhs) const = delete;
-  TypedTensorBase operator-(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::operator-(rhs);
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
+  #define BINOP_CPP(def_name, func_name) \
+  BINOP(def_name, func_name)\
+  friend TypedTensorBase def_name(Constant lhs, const TypedTensorBase& rhs) {\
+    return TensorBase<Backend>::def_name(lhs, rhs);\
   }
-  TensorBase<Backend> operator*(const TensorBase<Backend>& rhs) const = delete;
-  TypedTensorBase operator*(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::operator*(rhs);
+  #define UNIOP(def_name, func_name) \
+  TypedTensorBase def_name() const {\
+    return TensorBase<Backend>::def_name();\
   }
-  TensorBase<Backend> operator/(const TensorBase<Backend>& rhs) const = delete;
-  TypedTensorBase operator/(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::operator/(rhs);
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #define REDUCEOP(def_name, func_name) \
+  TypedTensorBase def_name(const AxisArray& axis = AllAxis) const {\
+    return TensorBase<Backend>::def_name(axis);\
   }
-  TypedTensorBase operator-() const {
-    return TensorBase<Backend>::operator-();
+  #define SELFOP_CPP(def_name, func_name) \
+  TypedTensorBase& def_name(const TypedTensorBase& rhs) {\
+    return TensorBase<Backend>::def_name(rhs);\
   }
-  TypedTensorBase matmul(const TypedTensorBase& other) const {
-    return TensorBase<Backend>::matmul((const TensorBase<Backend>&) other);
+  #include "operators.inc"
+
+  bool operator==(const TensorBase<Backend>& rhs) const = delete;
+  bool operator==(const TypedTensorBase& rhs) const {
+    return TensorBase<Backend>::operator==(rhs);
   }
-  TypedTensorBase log() const {
-    return TensorBase<Backend>::log();
+  bool near_equals(const TensorBase<Backend>& rhs) const = delete;
+  bool near_equals(const TypedTensorBase& rhs) const {
+    return TensorBase<Backend>::near_equals(rhs);
   }
-  TensorBase<Backend>& operator+=(const TensorBase<Backend>& rhs) = delete;
-  TypedTensorBase& operator+=(const TypedTensorBase& rhs) {
-    TensorBase<Backend>::operator+=((const TensorBase<Backend>&)rhs);
-    return *this;
+  TypedTensorBase clip(Constant mn, Constant mx) const {
+    return TensorBase<Backend>::clip(mn, mx);
   }
-  TensorBase<Backend>& operator-=(const TensorBase<Backend>& rhs) = delete;
-  TypedTensorBase& operator-=(const TypedTensorBase& rhs) {
-    TensorBase<Backend>::operator-=((const TensorBase<Backend>&)rhs);
-    return *this;
+  
+  // ==========================================
+  // * operations that can return tensor view *
+  TypedTensorBase reshaped(Shape shape) const {
+    return TensorBase<Backend>::reshaped(shape);
   }
+  TypedTensorBase transposed() const {
+    return TensorBase<Backend>::transposed();
+  }
+  TypedTensorBase axis_extended() const {
+    return TensorBase<Backend>::axis_extended();
+  }
+  // ==========================================
 };
 
 static inline bool can_broadcast_shape(Shape lhs, Shape rhs) {
@@ -481,36 +450,6 @@ static inline Shape calculate_reshape_shape(Shape old, Shape newi) {
   return newi;
 }
 
-template <typename T>
-concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle eh, TensorDescriptor desc, AxisArray axis, Constant val, bool& res_bool) {
-  {v.relase(eh)};
-  {v.allocate(desc)} -> std::same_as<typename T::Handle>;
-  {v.get_data(eh)} -> std::same_as<void*>;
-  {v.add(h, h, h)} -> std::same_as<bool>;
-  {v.sub(h, h, h)} -> std::same_as<bool>;
-  {v.mul(h, h, h)} -> std::same_as<bool>;
-  {v.div(h, h, h)} -> std::same_as<bool>;
-  {v.max(h, h, h)} -> std::same_as<bool>;
-  {v.min(h, h, h)} -> std::same_as<bool>;
-  {v.less(h, h, h)} -> std::same_as<bool>;
-  {v.less_eq(h, h, h)} -> std::same_as<bool>;
-  {v.matmul(h, h, h)} -> std::same_as<bool>;
-  {v.sum(h, h, h)} -> std::same_as<bool>;
-  {v.mean(h, h, h, axis)} -> std::same_as<bool>;
-  {v.reduce_max(h, h, h)} -> std::same_as<bool>;
-  {v.reduce_min(h, h, h)} -> std::same_as<bool>;
-  {v.copy(h, h)} -> std::same_as<bool>;
-  {v.diag(h, h)} -> std::same_as<bool>;
-  {v.fill(h, val)} -> std::same_as<bool>;
-  {v.equals(res_bool, h, h)} -> std::same_as<bool>;
-  {v.near_equals(res_bool, h, h)} -> std::same_as<bool>;
-  {v.clip(h, h, val, val)} -> std::same_as<bool>;
-  {v.log(h, h)} -> std::same_as<bool>;
-  {v.exp(h, h)} -> std::same_as<bool>;
-  {v.neg(h, h)} -> std::same_as<bool>;
-};
-
-
 static std::random_device rd;
 static std::mt19937 rng(rd());
 
@@ -545,6 +484,12 @@ public:
     operator bool() const {
       return !empty;
     }
+    bool operator==(const Handle& other) const {
+      return handle == other.handle;
+    }
+    bool operator!=(const Handle& other) const {
+      return handle != other.handle;
+    }
     friend class Backend;
   private:
     ExecutorHandle handle{};
@@ -575,6 +520,33 @@ public:
   }
   #include "element_type.inc"
   #undef ELEMENT_TYPE
+
+  #define BINOP_NO_CONST(def_name, func_name)\
+  Tensor def_name(const Tensor& lhs, const Tensor& rhs) {\
+    return lhs.def_name(rhs);\
+  }
+  #define BINOP_NO_CONST_CPP(def_name, func_name) ;
+  #define BINOP(def_name, func_name) \
+  BINOP_NO_CONST(def_name, func_name) \
+  Tensor def_name(const Tensor& lhs, Constant rhs) {\
+    return lhs.def_name(rhs);\
+  }\
+  Tensor def_name(Constant lhs, const Tensor& rhs) {\
+    auto c = constant(rhs.get_element_type(), lhs);\
+    return c.def_name(rhs);\
+  }
+  #define BINOP_CPP(def_name, func_name) ;
+  #define UNIOP(def_name, func_name) \
+  Tensor def_name(const Tensor& val) {\
+    return val.def_name();\
+  }
+  #define UNIOP_CPP(def_name, func_name) ;
+  #define REDUCEOP(def_name, func_name) \
+  Tensor def_name(const Tensor& val, const AxisArray& axis = AllAxis) {\
+    return val.def_name(axis);\
+  }
+  #define SELFOP_CPP(def_name, func_name) ;
+  #include "operators.inc"
 
   Tensor zeros(DataType datatype) {
     TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
@@ -673,51 +645,71 @@ public:
 private:
   Handle add(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("add", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.add(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.add(res.view(), lhs.view(), rhs.view()));
+    return res;
+  }
+  Handle add_assign(Handle res, Handle rhs) {
+    if (!can_no_alloc_bin_assign_op("add_assign", res, rhs))
+      return add(res, rhs);
+    per_element_bin_op_prepare(res, rhs);
+    unwrap(executor.add_assign(res.view(), rhs.view()));   
     return res;
   }
   Handle sub(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("sub", lhs, rhs);
-    Handle res_ =per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.sub(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.sub(res.view(), lhs.view(), rhs.view()));
+    return res;
+  }
+  Handle sub_assign(Handle res, Handle rhs) {
+    if (!can_no_alloc_bin_assign_op("sub_assign", res, rhs))
+      return sub(res, rhs);
+    per_element_bin_op_prepare(res, rhs);
+    unwrap(executor.sub_assign(res.view(), rhs.view()));   
     return res;
   }
   Handle mul(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("mul", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.mul(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.mul(res.view(), lhs.view(), rhs.view()));
     return res;
   }
   Handle div(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("div", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.div(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.div(res.view(), lhs.view(), rhs.view()));
     return res;
   }
   Handle max(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("max", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.max(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.max(res.view(), lhs.view(), rhs.view()));
     return res;
   }
   Handle min(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("min", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.min(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.min(res.view(), lhs.view(), rhs.view()));
     return res;
   }
   Handle less(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("less", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.less(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.less(res.view(), lhs.view(), rhs.view()));
     return res;
   }
   Handle less_eq(Handle lhs, Handle rhs) {
     Handle res = allocate_for_bin_op("less_eq", lhs, rhs);
-    Handle res_ = per_element_bin_op_prepare(res, lhs, rhs);
-    unwrap(executor.less_eq(res_.view(), lhs.view(), rhs.view()));
+    per_element_bin_op_prepare(lhs, rhs);
+    unwrap(executor.less_eq(res.view(), lhs.view(), rhs.view()));
     return res;
+  }
+  Handle more(Handle lhs, Handle rhs) {
+    return less(rhs, lhs);
+  }
+  Handle more_eq(Handle lhs, Handle rhs) {
+    return less_eq(rhs, lhs);
   }
   bool equals(Handle lhs, Handle rhs) {
     if (lhs.shape != rhs.shape) return false;
@@ -808,7 +800,6 @@ private:
     handle.shape = shape;
     return handle;
   }
-
   Handle transpose(Handle handle) {
     if (handle.strides.is_contiguous(handle.get_datatype()) || handle.strides.is_reverse_contiguous(handle.get_datatype())) {
       handle.shape = handle.shape.reverse();
@@ -830,6 +821,9 @@ private:
   void* get_data(Handle handle) {
     return executor.get_data(handle.get_ehandle());
   }
+  bool is_alive(Handle handle) {
+    return executor.is_alive(handle.get_ehandle());
+  }
   Handle allocate_for_bin_op(const char* opname, Handle lhs, Handle rhs) {
     TYPE_CHECK_OR_THROW(can_broadcast(lhs.get_datatype(), rhs.get_datatype()), opname, lhs.get_datatype(), rhs.get_datatype())
     return allocate(TensorDescriptor(calculate_broadcast_shape(lhs.get_shape(), rhs.get_shape()), lhs.get_element_type()));
@@ -837,8 +831,7 @@ private:
   void unwrap(bool eval) {
     CHECK_OR_THROW(eval, ExecutorInternalError)
   }
-
-  Handle per_element_bin_op_prepare(Handle res, Handle& lhs, Handle& rhs) {
+  void per_element_bin_op_prepare(Handle& lhs, Handle& rhs) {
     Shape lshape = lhs.get_shape(), rshape = rhs.get_shape();
     if (lshape != rshape) {
       auto ldim = lshape.get_ndims(), rdim = rshape.get_ndims();
@@ -855,7 +848,10 @@ private:
         new_strides[max_dim - i - 1] = smaller[min_dim - i - 1];
       smaller = new_strides;
     }
-    return res;
+  }
+  bool can_no_alloc_bin_assign_op(const std::string& opname, Handle res, Handle rhs) {
+    TYPE_CHECK_OR_THROW(can_broadcast(res.get_datatype(), rhs.get_datatype()), opname, res.get_datatype(), rhs.get_datatype())
+    return res.get_shape() == calculate_broadcast_shape(res.get_shape(), rhs.get_shape());
   }
 
   Handle reduce_prepare(Handle res, Handle& val, AxisArray& axis) {

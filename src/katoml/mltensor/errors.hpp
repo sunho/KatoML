@@ -20,6 +20,8 @@ public:\
 };
 
 ERROR_DEF(BackendMismatchError, "tried to operate with tensors with mistmatching backends")
+ERROR_DEF(UseAfterFreeError, "tried to use view to already released tensor")
+ERROR_DEF(ViewAssignAllocationError, "modify-assign operation on view needed new allocation")
 ERROR_DEF(NullConstantError, "tried to cast null tensor constant")
 ERROR_DEF(TensorTypeError, "tried to assign mistyped tensor to TypedTensor")
 ERROR_DEF(ExecutorInternalError, "executor internal error")

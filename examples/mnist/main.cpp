@@ -67,9 +67,8 @@ struct MNistDigitNetwork {
     auto program = device->compile(cross_entropy());
     std::cout << "loss:" << program.forward() << "\n";
     program.backward();
-    Device::Tensor factor = device->constant<float>(learing_rate);
-    W.set_tensor(W.get_tensor() - W.get_grad()*factor);
-    b.set_tensor(b.get_tensor() - b.get_grad()*factor);
+    W.set_tensor(W.get_tensor() - W.get_grad()*learing_rate);
+    b.set_tensor(b.get_tensor() - b.get_grad()*learing_rate);
   }
 
   Device::PlaceHolder X, y;

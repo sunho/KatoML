@@ -115,6 +115,30 @@ public:
     }
   }
 
+ template<class T, auto operation>
+  static void per_element_self_bin_op(WOffsetView res, ROffsetView rhs) {
+    const auto override = [](T a, T b, int){ return operation(a, b); };
+    per_element_iterate_self_bin_op<T,int,override>(0, res, rhs,0);
+  }
+
+  template<class T, class UserData, auto operation>
+  static void per_element_self_bin_op(WOffsetView res, ROffsetView rhs, UserData user_data) {
+    per_element_iterate_self_bin_op<T,UserData,operation>(0, res, rhs, user_data);
+  }
+
+  template<class T, class UserData, auto operation>
+  static void per_element_iterate_self_bin_op(int level, WOffsetView res, ROffsetView rhs, UserData user_data) {
+    if (level == res.shape.get_ndims()) {
+      res.write(operation(res.read<T>(), rhs.read<T>(), user_data));
+      return;
+    }
+    for (size_t i=0;i<res.shape[level];i++) {
+      per_element_iterate_self_bin_op<T,UserData,operation>(level+1, res, rhs, user_data);
+      res.offset += res.strides[level];
+      rhs.offset += rhs.strides[level];
+    }
+  }
+
   template<class T, auto operation>
   static void per_diag_element_uni_op(WOffsetView res, ROffsetView val) {
     for (size_t i=0;i<val.shape[0];i++) {

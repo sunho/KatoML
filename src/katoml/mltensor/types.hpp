@@ -371,5 +371,76 @@ private:
   Strides strides{};
 };
 
+template <typename T>
+class type_wrapper {
+public:
+};
+
+static inline void call_with_type(auto&& func, ElementType element_type) {
+  switch (element_type) {
+  #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
+  case ElementType::enum_name: \
+  func(type_wrapper<tyty>());\
+  break;
+  #include "element_type.inc"
+  #undef ELEMENT_TYPE
+  case ElementType::None:
+    assert(false);
+    break;
+  }
+}
+
+#define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
+static inline ElementType find_element_type(type_wrapper<tyty>) {\
+  return ElementType::enum_name;\
+}
+#include "element_type.inc"
+#undef ELEMENT_TYPE
+
+template<class... Ts>
+struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
+class Constant {
+enum class ConstantType { None, Min, Max, Value };
+public:
+  Constant() = default;
+  #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) Constant(tyty val) : val(val), type(ConstantType::Value) {}
+  #include "element_type.inc"
+  #undef ELEMENT_TYPE
+  template<typename T> T cast() const {
+    if (type == ConstantType::None)
+      throw NullConstantError();
+    if (type == ConstantType::Max) 
+      return std::numeric_limits<T>::max();
+    if (type == ConstantType::Min) 
+      return std::numeric_limits<T>::min();
+    return std::visit(overloaded {
+      [](std::monostate) { 
+        panic("monostate tensor constant");
+        return static_cast<T>(0);
+      },
+      [](auto v) {return static_cast<T>(v); }
+    }, val);
+  }
+  static inline Constant max() {
+    return Constant(ConstantType::Max);
+  }
+  static inline Constant min() {
+    return Constant(ConstantType::Min);
+  }
+private:
+  Constant(ConstantType type) : type(type) {}
+  using Inner = std::variant<
+    #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) tyty,
+    #include "element_type.inc"
+    #undef ELEMENT_TYPE
+    std::monostate
+  >;
+  ConstantType type { ConstantType::None };
+  Inner val;
+};
+
 }
 }

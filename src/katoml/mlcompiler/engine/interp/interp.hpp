@@ -200,7 +200,7 @@ static inline TTensor safe_log(const TTensor& val) {
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::SoftMax(ir::Value<Backend> val) {
   const auto& val_ = evaluate(val);
-  auto max_ = val_.max({-1});
+  auto max_ = val_.reduce_max({-1});
   if (val_.get_ndims() > 1) max_.extend_axis();
   auto z = val_ - max_;
   auto exp_ = z.exp();
@@ -212,7 +212,7 @@ TTensorPtr ForwardEvalVisitor<Backend>::SoftMax(ir::Value<Backend> val) {
 template<class Backend>
 TTensorPtr ForwardEvalVisitor<Backend>::LogSoftMax(ir::Value<Backend> val) {
   const auto& val_ = evaluate(val);
-  auto mx = val_.max({-1});
+  auto mx = val_.reduce_max({-1});
   if (val_.get_ndims() > 1) mx.extend_axis();
   auto z = val_ - mx;
   auto exp = z.exp();

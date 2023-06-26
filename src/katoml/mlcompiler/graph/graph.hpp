@@ -153,7 +153,6 @@ public:
   #include <katoml/mltensor/element_type.inc>
   #undef ELEMENT_TYPE
 
-
   template<typename T>
   Node tensor(const std::vector<T>& data) {
     return Node(device, device.template tensor<T>(data));
@@ -168,7 +167,6 @@ public:
   Node tensor(const std::vector<std::vector<std::vector<T>>>& data) {
     return Node(device, device.template tensor<T>(data));
   }
-
 
   Node constant(TTensor&& tensor) {return Node(device, std::move(tensor)); }
   Var var(TTensor&& tensor) {return Var(device, std::move(tensor)); }

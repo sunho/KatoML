@@ -1,4 +1,5 @@
 #include "katoml/mltensor/core.hpp"
+#include "katoml/mltensor/errors.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <katoml/mltensor/mltensor.hpp>
 
@@ -21,6 +22,27 @@ TEST_CASE( "Add is computed", "[cpu]" ) {
   REQUIRE(row + col == backend.tensor<int>({{11,12,13},{21,22,23},{31,32,33}}));
 }
 
+TEST_CASE( "Add assign is computed", "[cpu]" ) {
+  auto A = backend.ones_i32(3, 3);
+  A += A;
+  REQUIRE(A == backend.tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
+
+  A = backend.ones_i32(3, 3);
+  auto B = backend.tensor<int>({1,2,3});
+  A += B;
+  REQUIRE(A == backend.tensor<int>({{2,3,4},{2,3,4},{2,3,4}}));
+
+  A = backend.ones_i32(3, 3);
+  auto C = backend.tensor<int>({1});
+  A += C;
+  REQUIRE(A == backend.tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
+
+  auto row = backend.tensor<int>({1,2,3});
+  auto col = backend.tensor<int>({{10},{20},{30}});
+  row += col;
+  REQUIRE(row == backend.tensor<int>({{11,12,13},{21,22,23},{31,32,33}}));
+}
+
 TEST_CASE( "Sub is computed", "[cpu]" ) {
   auto A = backend.ones_i32(3, 3);
   REQUIRE(A - A == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
@@ -34,6 +56,27 @@ TEST_CASE( "Sub is computed", "[cpu]" ) {
   auto row = backend.tensor<int>({1,2,3});
   auto col = backend.tensor<int>({{10},{20},{30}});
   REQUIRE(row - col == backend.tensor<int>({{-9,-8,-7},{-19,-18,-17},{-29,-28,-27}}));
+}
+
+TEST_CASE( "Sub assign is computed", "[cpu]" ) {
+  auto A = backend.ones_i32(3, 3);
+  A -= A;
+  REQUIRE(A == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+
+  A = backend.ones_i32(3, 3);
+  auto B = backend.tensor<int>({1,2,3});
+  A -= B;
+  REQUIRE(A == backend.tensor<int>({{0,-1,-2},{0,-1,-2},{0,-1,-2}}));
+
+  A = backend.ones_i32(3, 3);
+  auto C = backend.tensor<int>({1});
+  A -= C;
+  REQUIRE(A == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+
+  auto row = backend.tensor<int>({1,2,3});
+  auto col = backend.tensor<int>({{10},{20},{30}});
+  row -= col;
+  REQUIRE(row == backend.tensor<int>({{-9,-8,-7},{-19,-18,-17},{-29,-28,-27}}));
 }
 
 TEST_CASE( "Mul is computed", "[cpu]" ) {
@@ -107,6 +150,24 @@ TEST_CASE( "More or eq is computed", "[cpu]" ) {
   REQUIRE((A >= B) == backend.tensor<int>({{1,1},{1,1}}));
 }
 
+TEST_CASE( "Bin ops with constant is computed", "[cpu]" ) {
+  auto A = backend.ones_i32(3, 3);
+  REQUIRE(A + 1 == backend.tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
+  REQUIRE(1 + A == backend.tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
+  REQUIRE(A - 1 == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+  REQUIRE(2 - A == backend.tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+  REQUIRE(A * 32 == backend.tensor<int>({{32,32,32},{32,32,32},{32,32,32}}));
+  REQUIRE(32 * A == backend.tensor<int>({{32,32,32},{32,32,32},{32,32,32}}));
+  REQUIRE(A / 1 == backend.tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+  REQUIRE(1 / A == backend.tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+  REQUIRE(A / 2 == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+  REQUIRE(2 / A == backend.tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
+  REQUIRE((A < 1) == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+  REQUIRE((1 < A) == backend.tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+  REQUIRE((A <= 1) == backend.tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+  REQUIRE((1 <= A) == backend.tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+}
+
 TEST_CASE( "Matmul is computed", "[cpu]" ) {
   auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   auto B = backend.tensor<int>({{4,5,6},{6,5,4},{4,6,5}});
@@ -132,6 +193,21 @@ TEST_CASE( "Reshape is working", "[cpu]" ) {
   REQUIRE(reshaped == backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}}));
 }
 
+TEST_CASE( "Add assign to view", "[cpu]" ) {
+  auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  REQUIRE(A_view == backend.tensor<int>({{{1,2,3,3,2,1,1,2,3}}}));
+  A_view += backend.tensor<int>({1});
+  REQUIRE(A_view == backend.tensor<int>({{{2,3,4,4,3,2,2,3,4}}}));
+  REQUIRE(A == backend.tensor<int>({{2,3,4},{4,3,2},{2,3,4}}));
+  
+  auto B = backend.tensor<int>({1});
+  auto B_view = B.reshaped(Shape({1,1}));
+  REQUIRE_THROWS_AS([&](){
+    B_view += A;
+  }(), ViewAssignAllocationError);
+}
+
 TEST_CASE( "Reduce sum is working", "[cpu]" ) {
   auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   REQUIRE(A.sum().at<int>(0) == 18);
@@ -148,7 +224,7 @@ TEST_CASE( "Transpose is working", "[cpu]" ) {
   REQUIRE(A.transposed() ==  backend.tensor<int>({{1,2,3},{3,2,1},{2,1,3}}));
 }
 
-TEST_CASE( "Mean is working", "[cpu]" ) {
+TEST_CASE( "Reduce mean is working", "[cpu]" ) {
   auto A = backend.tensor<int>({{3,3,3}});
   
   REQUIRE(A.mean() == backend.tensor<int>({3}));
