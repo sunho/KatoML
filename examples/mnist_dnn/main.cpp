@@ -32,8 +32,7 @@ std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoad
 
 Device::Var xavier_norm_var(Shape shape) {
   auto rand = device->uniform(DataType(ElementType::Float32, shape), -1.0, 1.0);
-  rand = device->xavier_normalize(rand);
-  return graph.var(std::move(rand));
+  return graph.var(rand / std::sqrt(shape[0]));
 }
 
 struct MNistDigitNetwork {

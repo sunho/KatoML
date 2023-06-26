@@ -555,7 +555,7 @@ public:
   
   Tensor ones(DataType datatype) {
     auto res = zeros(datatype);
-    res.fill(Constant(1));
+    res.fill(1);
     return res;
   }
 
@@ -631,10 +631,6 @@ public:
 
   Tensor normalize(const Tensor& tensor) {
     return tensor / (tensor * tensor).sum();
-  }
-
-  Tensor xavier_normalize(const Tensor& tensor) {
-    return tensor / constant(tensor.get_element_type(), std::sqrt(tensor.get_shape()[0]));
   }
 
   template<typename T, signed_type... Sz>

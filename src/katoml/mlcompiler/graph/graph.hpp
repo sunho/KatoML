@@ -145,9 +145,9 @@ public:
   template<signed_type... Sz> \
   Var uniform_var_##name(Sz... sz) { return Var(device, device.uniform_##name(sz...)); } \
   template<signed_type... Sz> \
-  Node norm_##name(Sz... sz) { return Node(device, device.normalize(device.uniform_##name(sz...) - device.constant(0.5f))); } \
+  Node norm_##name(Sz... sz) { return Node(device, device.normalize(device.uniform_##name(sz...) - 0.5)); } \
   template<signed_type... Sz> \
-  Var norm_var_##name(Sz... sz) { return Var(device, device.normalize(device.uniform_##name(sz...) - device.constant(0.5f))); } \
+  Var norm_var_##name(Sz... sz) { return Var(device, device.normalize(device.uniform_##name(sz...) - 0.5)); } \
   template<signed_type... Sz> \
   PlaceHolder placeholder_##name(Sz... sz) { return PlaceHolder(device, tensor::DataType(tensor::ElementType::enum_name, tensor::Shape({sz...}))); }
   #include <katoml/mltensor/element_type.inc>
