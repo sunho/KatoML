@@ -5,7 +5,7 @@
 using namespace katoml::compiler;
 using namespace katoml::tensor;
 
-auto device = construct_device();
+static auto device = construct_device();
 
 #define evaluate(eval) (device->compile(eval).forward())
 

@@ -208,6 +208,40 @@ TEST_CASE( "Add assign to view", "[cpu]" ) {
   }(), ViewAssignAllocationError);
 }
 
+TEST_CASE( "Fill to view", "[cpu]" ) {
+  auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  REQUIRE(A_view == backend.tensor<int>({{{1,2,3,3,2,1,1,2,3}}}));
+  A_view.fill(20);
+  REQUIRE(A_view == backend.tensor<int>({{{20,20,20,20,20,20,20,20,20}}}));
+  REQUIRE(A == backend.tensor<int>({{20,20,20},{20,20,20},{20,20,20}}));
+}
+
+TEST_CASE( "Use freed tensor", "[cpu]" ) {
+  auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  A = backend.tensor<int>({1});
+  
+  REQUIRE_THROWS_AS([&](){
+    A_view.fill(1);
+  }(), UseAfterFreeError);
+    
+  REQUIRE_THROWS_AS([&](){
+    auto C = A_view + 1;
+    std::cout << C;
+  }(), UseAfterFreeError);
+
+  REQUIRE_THROWS_AS([&](){
+    auto C = A_view.copy();
+    std::cout << C;
+  }(), UseAfterFreeError);
+
+  REQUIRE_THROWS_AS([&](){
+    auto C = A_view.reshaped(Shape({3,3}));
+    std::cout << C;
+  }(), UseAfterFreeError);
+}
+
 TEST_CASE( "Reduce sum is working", "[cpu]" ) {
   auto A = backend.tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   REQUIRE(A.sum().at<int>(0) == 18);

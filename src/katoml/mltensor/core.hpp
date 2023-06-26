@@ -75,10 +75,9 @@ public:
     other.handle = {};
   }
   TensorBase& operator=(TensorBase&& other) {
-    backend = std::move(other.backend);
-    handle = other.handle;
-    is_view = other.is_view;
-    other.handle = {};
+    std::swap(backend, other.backend);
+    std::swap(handle, other.handle);
+    std::swap(is_view, other.is_view);
     return *this;
   }
   ~TensorBase() {
