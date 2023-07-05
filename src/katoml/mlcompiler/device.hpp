@@ -12,20 +12,19 @@
 namespace katoml {
 namespace compiler {
 
-template<typename Engine, class Executor>
-class IDevice : public tensor::Backend<Executor> {
+template<typename Engine, class Backend>
+class IDevice : public GraphDevice<Backend> {
 public:
-  using Backend = tensor::Backend<Executor>;
   using Tensor = typename Backend::Tensor;
-  using Node = Node<IDevice, Backend>;
-  using Var = Var<IDevice, Backend>;
-  using PlaceHolder = PlaceHolder<IDevice, Backend>;
+  using Node = Node<GraphDevice<Backend>, Backend>;
+  using Var = Var<GraphDevice<Backend>, Backend>;
+  using PlaceHolder = PlaceHolder<GraphDevice<Backend>, Backend>;
   using Program = typename Engine::Program;
   using ComputeGraph = typename Engine::ComputeGraph;
 
-  IDevice(Executor&& executor) : Backend(std::move(executor)), 
+  IDevice(Backend&& backend) : GraphDevice<Backend>(std::move(backend)),
     pass_manager(std::move(ir::construct_default_pass_manager<Backend>())), 
-    graph_builder(*this), engine(*this) {}
+   engine(this->backend_) {}
   
   Program compile(Node output) { 
     ir::Value optimized = pass_manager->optimize(output.get_value());
@@ -35,20 +34,15 @@ public:
 
   template<typename T>
   using TypedTensor = typename Backend::template TypedTensor<T>;
-
-  GraphBuilder<IDevice, Backend>& graph() {
-    return graph_builder;
-  }
 private:
   Engine engine;
   std::unique_ptr<ir::PassManager<Backend>> pass_manager;
-  GraphBuilder<IDevice, Backend> graph_builder;
 };
 
-using Device = IDevice<engine::InterpEngine<tensor::CPUBackend>, tensor::CPUExecutor>;
+using Device = IDevice<engine::InterpEngine<tensor::CPUBackend>, tensor::CPUBackend>;
 
 static inline std::unique_ptr<Device> construct_device() {
-  return std::make_unique<Device>(std::move(tensor::CPUExecutor()));
+  return std::make_unique<Device>(tensor::construct_cpu_backend());
 }
 
 }

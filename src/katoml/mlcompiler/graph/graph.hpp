@@ -122,55 +122,53 @@ private:
   ir::VarPtr<Backend> var;
 };
 
-template<class Device, class Backend>
-class GraphBuilder {
+template<class Backend>
+class GraphDevice {
 public:
-  GraphBuilder(Device& device) 
-    : device(device) {}
-  using Node = Node<Device, Backend>;
-  using Var = Var<Device, Backend>;
-  using PlaceHolder = PlaceHolder<Device, Backend>;
+  using Node = Node<GraphDevice, Backend>;
+  using Var = Var<GraphDevice, Backend>;
+  using PlaceHolder = PlaceHolder<GraphDevice, Backend>;
 
   #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
   template<signed_type... Sz> \
-  Node zeros_##name(Sz... sz) { return Node(device, device.zeros_##name(sz...)); } \
+  Node zeros_##name(Sz... sz) { return Node(*this, backend().zeros_##name(sz...)); } \
   template<signed_type... Sz> \
-  Var zeros_var_##name(Sz... sz) { return Var(device, device.zeros_##name(sz...)); } \
+  Var zeros_var_##name(Sz... sz) { return Var(*this, backend().zeros_##name(sz...)); } \
   template<signed_type... Sz> \
-  Node ones_##name(Sz... sz) { return Node(device, device.ones_##name(sz...)); } \
+  Node ones_##name(Sz... sz) { return Node(*this, backend().ones_##name(sz...)); } \
   template<signed_type... Sz> \
-  Var ones_var_##name(Sz... sz) { return Var(device, device.ones_##name(sz...)); } \
+  Var ones_var_##name(Sz... sz) { return Var(*this, backend().ones_##name(sz...)); } \
   template<signed_type... Sz> \
-  Node uniform_##name(Sz... sz) { return Node(device, device.uniform_##name(sz...)); } \
+  Node uniform_##name(Sz... sz) { return Node(*this, backend().uniform_##name(sz...)); } \
   template<signed_type... Sz> \
-  Var uniform_var_##name(Sz... sz) { return Var(device, device.uniform_##name(sz...)); } \
+  Var uniform_var_##name(Sz... sz) { return Var(*this, backend().uniform_##name(sz...)); } \
   template<signed_type... Sz> \
-  Node norm_##name(Sz... sz) { return Node(device, device.normalize(device.uniform_##name(sz...) - 0.5)); } \
+  Node norm_##name(Sz... sz) { return Node(*this, backend().normalize(backend().uniform_##name(sz...) - 0.5)); } \
   template<signed_type... Sz> \
-  Var norm_var_##name(Sz... sz) { return Var(device, device.normalize(device.uniform_##name(sz...) - 0.5)); } \
+  Var norm_var_##name(Sz... sz) { return Var(*this, backend().normalize(backend().uniform_##name(sz...) - 0.5)); } \
   template<signed_type... Sz> \
-  PlaceHolder placeholder_##name(Sz... sz) { return PlaceHolder(device, tensor::DataType(tensor::ElementType::enum_name, tensor::Shape({sz...}))); }
+  PlaceHolder placeholder_##name(Sz... sz) { return PlaceHolder(*this, tensor::DataType(tensor::ElementType::enum_name, tensor::Shape({sz...}))); }
   #include <katoml/mltensor/element_type.inc>
   #undef ELEMENT_TYPE
 
   template<typename T>
   Node tensor(const std::vector<T>& data) {
-    return Node(device, device.template tensor<T>(data));
+    return Node(*this, backend().template tensor<T>(data));
   }
 
   template<typename T>
   Node tensor(const std::vector<std::vector<T>>& data) {
-    return Node(device, device.template tensor<T>(data));
+    return Node(*this, backend().template tensor<T>(data));
   }
 
   template<typename T>
   Node tensor(const std::vector<std::vector<std::vector<T>>>& data) {
-    return Node(device, device.template tensor<T>(data));
+    return Node(*this, backend().template tensor<T>(data));
   }
 
-  Node constant(TTensor&& tensor) {return Node(device, std::move(tensor)); }
-  Var var(TTensor&& tensor) {return Var(device, std::move(tensor)); }
-  PlaceHolder placeholder(TTensor&& tensor) {return PlaceHolder(device, std::move(tensor)); }
+  Node constant(TTensor&& tensor) {return Node(*this, std::move(tensor)); }
+  Var var(TTensor&& tensor) {return Var(*this, std::move(tensor)); }
+  PlaceHolder placeholder(TTensor&& tensor) {return PlaceHolder(*this, std::move(tensor)); }
   
   Node max(Node a, Node b) { return a.max(b); }
   Node min(Node a, Node b) { return a.min(b); }
@@ -180,8 +178,13 @@ public:
   Node log_softmax(Node a) { return a.log_softmax(); }
   Node sum(Node a, const std::vector<int>& axis = tensor::AllAxis) { return a.sum(axis); }
   Node mean(Node a, const std::vector<int>& axis = tensor::AllAxis) { return a.mean(axis); }
-private:
-  Device& device;
+
+  Backend& backend() { return backend_; }
+protected:
+  GraphDevice(Backend&& backend) 
+    : backend_(std::move(backend)) {}
+  
+  Backend backend_;
 };
 
 }

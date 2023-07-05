@@ -10,7 +10,7 @@ const int default_batch_size = 128;
 const float learing_rate = 3e-2;
 
 auto device = construct_device();
-auto& graph = device->graph();
+auto& backend = device->backend();
 
 std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoader& loader, size_t batch_size) {
   std::uniform_int_distribution<int> gen(0, loader.size()-1); 
@@ -26,24 +26,24 @@ std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoad
     y.push_back(ans);
     labels.push_back(loader.labels(id));
   }
-  return {device->tensor(X), device->tensor(y), labels};
+  return {backend.tensor(X), backend.tensor(y), labels};
 }
 
 struct MNistDigitNetwork {
   MNistDigitNetwork() : 
-    X(graph.placeholder_f32(Shape::Any, 784)),
-    y(graph.placeholder_f32(Shape::Any, 10)),
-    W(graph.norm_var_f32(784,10)), 
-    b(graph.norm_var_f32(10)) {}
+    X(device->placeholder_f32(Shape::Any, 784)),
+    y(device->placeholder_f32(Shape::Any, 10)),
+    W(device->norm_var_f32(784,10)), 
+    b(device->norm_var_f32(10)) {}
 
   Device::Node forward() {
-    return graph.softmax(graph.matmul(X,W) + b);
+    return device->softmax(device->matmul(X,W) + b);
   }
 
   Device::Node cross_entropy() {
     auto y_ = forward();
     std::cout << y_ << "\n";
-    return graph.mean(-graph.sum(y * y_.log(), {1}));
+    return device->mean(-device->sum(y * y_.log(), {1}));
   }
 
   std::vector<int> predict(const Device::Tensor& images) {

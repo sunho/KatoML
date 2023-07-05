@@ -11,7 +11,7 @@ const int default_batch_size = 128;
 const float learing_rate = 0.1;
 
 auto device = construct_device();
-auto& graph = device->graph();
+auto& backend = device->backend();
 
 std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoader& loader, size_t batch_size) {
   std::uniform_int_distribution<int> gen(0, loader.size()-1); 
@@ -27,31 +27,31 @@ std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoad
     y.push_back(ans);
     labels.push_back(loader.labels(id));
   }
-  return {device->tensor(X), device->tensor(y), labels};
+  return {backend.tensor(X), backend.tensor(y), labels};
 }
 
 Device::Var xavier_norm_var(Shape shape) {
-  auto rand = device->uniform(DataType(ElementType::Float32, shape), -1.0, 1.0);
-  return graph.var(rand / std::sqrt(shape[0]));
+  auto rand = backend.uniform(DataType(ElementType::Float32, shape), -1.0, 1.0);
+  return device->var(rand / std::sqrt(shape[0]));
 }
 
 struct MNistDigitNetwork {
   MNistDigitNetwork() : 
-    X(graph.placeholder_f32(Shape::Any, 784)),
-    y(graph.placeholder_f32(Shape::Any, 10)),
+    X(device->placeholder_f32(Shape::Any, 784)),
+    y(device->placeholder_f32(Shape::Any, 10)),
     W(xavier_norm_var(Shape({784,784}))), 
     W2(xavier_norm_var(Shape({784,10}))), 
     b(xavier_norm_var(Shape({784}))),
     b2(xavier_norm_var(Shape({10}))) {}
 
   Device::Node forward() {
-    auto hidden = graph.max(graph.matmul(X,W) + b, graph.zeros_f32(1));
-    return graph.softmax(graph.matmul(hidden, W2) + b2);
+    auto hidden = device->max(device->matmul(X,W) + b, device->zeros_f32(1));
+    return device->softmax(device->matmul(hidden, W2) + b2);
   }
 
   Device::Node cross_entropy() {
     auto y_ = forward();
-    return graph.mean(-graph.sum(y * y_.log(), {1}));
+    return device->mean(-device->sum(y * y_.log(), {1}));
   }
 
   std::vector<int> predict(const Device::Tensor& images) {
