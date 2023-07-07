@@ -26,6 +26,8 @@ public:
     device(device), value(value) {}
   Node(GraphDevice& device, Tensor&& tensor) :
     device(device), value(std::make_shared<Tensor>(std::move(tensor))) {}
+  Node(const Node& other) = default;
+  Node& operator=(const Node& rhs) = default;
   friend Node operator+(Node lhs, Node rhs) {
     return Node(lhs.device, ir::Builder::Add(lhs.value, rhs.value));
   }
@@ -70,7 +72,7 @@ public:
   }
   ir::Value get_value() const { return value; }
 private:
-  GraphDevice& device;
+  std::reference_wrapper<GraphDevice> device;
   ir::Value value;
 };
 

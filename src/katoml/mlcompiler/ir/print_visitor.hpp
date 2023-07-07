@@ -68,7 +68,6 @@ inline std::ostream& operator<<(std::ostream& os, const Value& value) {
   return os;
 }
 
-
 void PrinterVisitor::Add(ir::Value lhs, ir::Value rhs) {
   os << format("Add({}, {})", lhs, rhs);
 }
