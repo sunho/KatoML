@@ -1,5 +1,11 @@
 #pragma once
 #include <katoml/mltensor/mltensor.hpp>
 
-#define TTensor typename Backend::Tensor
-#define TTensorPtr std::shared_ptr<TTensor>
+namespace katoml {
+namespace compiler {
+
+using Tensor = katoml::tensor::Tensor;
+using TensorPtr = std::shared_ptr<Tensor>;
+
+}
+}

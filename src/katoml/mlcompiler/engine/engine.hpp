@@ -7,34 +7,26 @@ namespace katoml {
 namespace compiler {
 namespace engine {
 
-template <typename T, typename Backend>
-concept IEngineProgram = requires(T v, ir::Value<Backend> val) {
-  {v.reset()};
-  {v.forward()} -> std::same_as<typename Backend::Tensor>;
-  {v.backward()} -> std::same_as<bool>;
-};
-
-template <typename T, typename Backend>
-concept IEngineImpl = requires(T v, ir::Value<Backend> val, typename T::Program program) {
-  requires IEngineProgram<typename T::Program, Backend>;
-  {v.compile(val)} -> std::same_as<typename T::Program>;
-};
-
-template<typename Backend, IEngineImpl<Backend> EngineImpl>
 class Engine {
 public:
-  Engine(Backend& backend) : impl(backend) {}
+  Engine(tensor::Backend& backend) 
+    : backend(backend) {}
+  virtual ~Engine() = default;
 
-  using Program = typename EngineImpl::Program;
-  using ComputeGraph = typename EngineImpl::ComputeGraph;
-  Program compile(ir::Value<Backend> output) {
-    return impl.compile(output);
+  class Program {
+  public:
+    virtual ~Program() = default;
+    virtual Tensor forward() = 0;
+    virtual bool backward() = 0;
+    virtual void reset() = 0;
+  };
+
+  virtual std::unique_ptr<Program> compile(ir::Value output) = 0;
+  Tensor evaluate(ir::Value value) {
+    return compile(value)->forward();
   }
-  TTensor evaluate(ir::Value<Backend> value) {
-    return compile(value).forward();
-  }
-private:
-  EngineImpl impl;
+protected:
+  tensor::Backend& backend;
 };
 
 }

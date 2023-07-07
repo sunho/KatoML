@@ -12,17 +12,15 @@ namespace katoml {
 namespace compiler {
 namespace ir {
 
-template<class Backend>
 class Pass {
 public:
   virtual ~Pass() {}
-  virtual Value<Backend> run(Value<Backend> value) = 0;
+  virtual Value run(Value value) = 0;
 };
 
-template<class Backend>
-class NodeCombinePass : public Pass<Backend> {
+class NodeCombinePass : public Pass {
 public:
-  Value<Backend> run(Value<Backend> value) {
+  Value run(Value value) {
     if (!value.is_node())
       return value;
     auto& node = *value.as_node();
@@ -34,7 +32,7 @@ public:
     return value;
   }
 private:
-  void visit(Node<Backend>& node) {
+  void visit(Node& node) {
     if (visited.count(node.get_id())) return;
     visited.insert(node.get_id());
     for (int i=0;i<node.get_num_args();i++){
@@ -56,7 +54,7 @@ private:
     }
   }
 
-  void combine(Node<Backend>& node) {
+  void combine(Node& node) {
     switch (node.get_opcode()) {
     case Opcode::Log: {
       combine_log(node);
@@ -68,44 +66,42 @@ private:
     }
   }
 
-  void combine_log(Node<Backend>& node) {
+  void combine_log(Node& node) {
     auto val = node.get_args()[0];
     if (val.is_node() && val.as_node()->get_opcode() == Opcode::SoftMax) {
-      replace(node, Builder<Backend>::LogSoftMax(val.as_node()->get_args()[0]));
+      replace(node, Builder::LogSoftMax(val.as_node()->get_args()[0]));
     }
   }
 
-  void replace(Node<Backend>& node, Value<Backend> value) {
+  void replace(Node& node, Value value) {
     replaced[node.get_id()] = value;
   }
 
   std::set<uint64_t> visited;
-  std::unordered_map<uint64_t, Value<Backend>> replaced;
+  std::unordered_map<uint64_t, Value> replaced;
 };
 
-template<class Backend>
 class PassManager {
 public:
   PassManager() {}
 
-  void add_pass(std::unique_ptr<Pass<Backend>>&& pass) {
+  void add_pass(std::unique_ptr<Pass>&& pass) {
     passes.emplace_back(std::move(pass));
   }
 
-  Value<Backend> optimize(Value<Backend> value) {
+  Value optimize(Value value) {
     for (auto& pass : passes) {
       value = pass->run(value);
     }
     return value;
   }
 private:
-  std::list<std::unique_ptr<Pass<Backend>>> passes;
+  std::list<std::unique_ptr<Pass>> passes;
 };
 
-template<class Backend>
-std::unique_ptr<PassManager<Backend>> construct_default_pass_manager() {
-  auto manager = std::make_unique<PassManager<Backend>>();
-  manager->add_pass(std::make_unique<NodeCombinePass<Backend>>());
+static inline std::unique_ptr<PassManager> construct_default_pass_manager() {
+  auto manager = std::make_unique<PassManager>();
+  manager->add_pass(std::make_unique<NodeCombinePass>());
   return manager;
 }
 

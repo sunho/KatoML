@@ -16,19 +16,18 @@ enum class ValueType {
   Var,
 };
 
-template<class Backend>
 class Value {
 public:
   Value() = default;
-  Value(const TTensorPtr& tensor) : 
+  Value(const TensorPtr& tensor) : 
     type(ValueType::Tensor), impl(tensor) { }
   Value(const IntList& list) :
     type(ValueType::IntList), impl(list) {}
   Value(const std::string& str) :
     type(ValueType::Str), impl(str) {}
-  Value(const NodePtr<Backend>& node) :
+  Value(const NodePtr& node) :
     type(ValueType::Node), impl(node) {}
-  Value(const VarPtr<Backend>& var) :
+  Value(const VarPtr& var) :
     type(ValueType::Var), impl(var) {}
   ValueType get_type() const { return type; }
   inline DataType get_datatype() const;
@@ -43,44 +42,39 @@ public:
     assert(type == ValueType::IntList);
     return std::get<IntList>(impl);
   }
-  TTensorPtr as_tensor() const {
+  TensorPtr as_tensor() const {
     assert(type == ValueType::Tensor);
-    return std::get<TTensorPtr>(impl);
+    return std::get<TensorPtr>(impl);
   }
-  NodePtr<Backend> as_node() const {
+  NodePtr as_node() const {
     assert(type == ValueType::Node);
-    return std::get<NodePtr<Backend>>(impl);
+    return std::get<NodePtr>(impl);
   }
-  VarPtr<Backend> as_var() const {
+  VarPtr as_var() const {
     assert(type == ValueType::Var);
-    return std::get<VarPtr<Backend>>(impl);
+    return std::get<VarPtr>(impl);
   }
 private:
-  using ValueImpl = std::variant<TTensorPtr, IntList, std::string, NodePtr<Backend>, VarPtr<Backend>>;
+  using ValueImpl = std::variant<TensorPtr, IntList, std::string, NodePtr, VarPtr>;
   ValueType type { ValueType::Void };
   ValueImpl impl { };
 };
 
-template<class Backend, class T, ValueType VT>
-class TypedValue : public Value<Backend> {
+template<class T, ValueType VT>
+class TypedValue : public Value {
 public:
   TypedValue() = delete;
-  TypedValue(const T& value) : Value<Backend>(value) {}
-  TypedValue(const Value<Backend>& value) : Value<Backend>(value) {
+  TypedValue(const T& value) : Value(value) {}
+  TypedValue(const Value& value) : Value(value) {
     assert(value.get_type() == VT);
   }
 };
 
-template<class Backend>
-using StrValue = TypedValue<Backend, std::string, ValueType::Str>;
-template<class Backend>
-using IntListValue = TypedValue<Backend, IntList, ValueType::IntList>;
-template<class Backend>
-using TensorValue = TypedValue<Backend, TTensorPtr, ValueType::Tensor>;
-template<class Backend>
-using NodeValue = TypedValue<Backend, NodePtr<Backend>, ValueType::Node>;
-template<class Backend>
-using VarValue = TypedValue<Backend, VarPtr<Backend>, ValueType::Var>;
+using StrValue = TypedValue<std::string, ValueType::Str>;
+using IntListValue = TypedValue<IntList, ValueType::IntList>;
+using TensorValue = TypedValue<TensorPtr, ValueType::Tensor>;
+using NodeValue = TypedValue<NodePtr, ValueType::Node>;
+using VarValue = TypedValue<VarPtr, ValueType::Var>;
 
 }
 }

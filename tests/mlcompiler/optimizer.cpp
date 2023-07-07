@@ -8,7 +8,7 @@ using namespace katoml::compiler;
 using namespace katoml::tensor;
 
 static auto device = construct_device();
-static auto default_pass_manager = ir::construct_default_pass_manager<CPUBackend>();
+static auto default_pass_manager = ir::construct_default_pass_manager();
 
 TEST_CASE( "Log softmax combine pass", "[cpu]" ) {
   auto node = device->log(device->softmax(device->zeros_f32(1)));

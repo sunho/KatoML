@@ -12,7 +12,7 @@ const float learing_rate = 3e-2;
 auto device = construct_device();
 auto& backend = device->backend();
 
-std::tuple<Device::Tensor, Device::Tensor, std::vector<int>> pick_data(MNistLoader& loader, size_t batch_size) {
+std::tuple<Tensor, Tensor, std::vector<int>> pick_data(MNistLoader& loader, size_t batch_size) {
   std::uniform_int_distribution<int> gen(0, loader.size()-1); 
   std::vector<std::vector<float>> X;
   std::vector<std::vector<float>> y;
@@ -36,21 +36,21 @@ struct MNistDigitNetwork {
     W(device->norm_var_f32(784,10)), 
     b(device->norm_var_f32(10)) {}
 
-  Device::Node forward() {
+  Node forward() {
     return device->softmax(device->matmul(X,W) + b);
   }
 
-  Device::Node cross_entropy() {
+  Node cross_entropy() {
     auto y_ = forward();
     std::cout << y_ << "\n";
     return device->mean(-device->sum(y * y_.log(), {1}));
   }
 
-  std::vector<int> predict(const Device::Tensor& images) {
+  std::vector<int> predict(const Tensor& images) {
     std::vector<int> res;
     size_t batch_size = images.get_shape()[0];
     X.set_tensor(images.copy());
-    auto predicted = device->compile(forward()).forward();
+    auto predicted = device->compile(forward())->forward();
     for (int i=0;i<batch_size;i++){
       std::pair<float, int> maxi = {-1.0, 0};
       for (int j=0;j<10;j++){
@@ -61,18 +61,18 @@ struct MNistDigitNetwork {
     return res;
   }
 
-  void train(const Device::Tensor& images, const Device::Tensor& label, size_t batch_size) {
+  void train(const Tensor& images, const Tensor& label, size_t batch_size) {
     X.set_tensor(images.copy());
     y.set_tensor(label.copy());
     auto program = device->compile(cross_entropy());
-    std::cout << "loss:" << program.forward() << "\n";
-    program.backward();
+    std::cout << "loss:" << program->forward() << "\n";
+    program->backward();
     W.set_tensor(W.get_tensor() - W.get_grad()*learing_rate);
     b.set_tensor(b.get_tensor() - b.get_grad()*learing_rate);
   }
 
-  Device::PlaceHolder X, y;
-  Device::Var W, b;
+  PlaceHolder X, y;
+  Var W, b;
 };
 
 int main() {

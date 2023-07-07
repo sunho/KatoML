@@ -10,7 +10,6 @@ namespace katoml {
 namespace compiler {
 namespace ir {
 
-template<class Backend>
 struct PrinterVisitor {
   std::ostream& os;
 #define DECL_NODE(OP, ARGS, PARAMS, TYPES) inline void OP(ARGS);
@@ -18,23 +17,20 @@ struct PrinterVisitor {
 #undef DECL_NODE
 };
 
-template<class Backend>
-inline std::ostream& operator<<(std::ostream& os, const Node<Backend>& node) {
-  PrinterVisitor<Backend> visitor{os};
-  NodeVisitorCaller<Backend, void, PrinterVisitor<Backend>>().call(visitor, node);
+inline std::ostream& operator<<(std::ostream& os, const Node& node) {
+  PrinterVisitor visitor{os};
+  NodeVisitorCaller<void, PrinterVisitor>().call(visitor, node);
   return os;
 }
 
-template<class Backend>
-inline std::ostream& operator<<(std::ostream& os, const Var<Backend>& var) {
+inline std::ostream& operator<<(std::ostream& os, const Var& var) {
   os << "Var(";
   os << var.get_tensor();
   os << ")";
   return os;
 }
 
-template<class Backend>
-inline std::ostream& operator<<(std::ostream& os, const Value<Backend>& value) {
+inline std::ostream& operator<<(std::ostream& os, const Value& value) {
   switch (value.get_type()) {
   case ValueType::Void:
     os << "<Void>";
@@ -73,68 +69,55 @@ inline std::ostream& operator<<(std::ostream& os, const Value<Backend>& value) {
 }
 
 
-template<class Backend>
-void PrinterVisitor<Backend>::Add(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Add(ir::Value lhs, ir::Value rhs) {
   os << format("Add({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Sub(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Sub(ir::Value lhs, ir::Value rhs) {
   os << format("Sub({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Mul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Mul(ir::Value lhs, ir::Value rhs) {
   os << format("Mul({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Div(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Div(ir::Value lhs, ir::Value rhs) {
   os << format("Div({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Max(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Max(ir::Value lhs, ir::Value rhs) {
   os << format("Max({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Min(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::Min(ir::Value lhs, ir::Value rhs) {
   os << format("Min({}, {})", lhs, rhs);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::SoftMax(ir::Value<Backend> val) {
+void PrinterVisitor::SoftMax(ir::Value val) {
   os << format("SoftMax({})", val);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::LogSoftMax(ir::Value<Backend> val) {
+void PrinterVisitor::LogSoftMax(ir::Value val) {
   os << format("LogSoftMax({})", val);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Neg(ir::Value<Backend> val) {
+void PrinterVisitor::Neg(ir::Value val) {
   os << format("Neg({})", val);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::Log(ir::Value<Backend> val) {
+void PrinterVisitor::Log(ir::Value val) {
   os << format("Log({})", val);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::ReduceSum(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
+void PrinterVisitor::ReduceSum(ir::Value val, ir::IntListValue axis) {
   os << format("ReduceSum({}, axis={})", val, axis);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::ReduceMean(ir::Value<Backend> val, ir::IntListValue<Backend> axis) {
+void PrinterVisitor::ReduceMean(ir::Value val, ir::IntListValue axis) {
   os << format("ReduceMean({}, axis={})", val, axis);
 }
 
-template<class Backend>
-void PrinterVisitor<Backend>::MatMul(ir::Value<Backend> lhs, ir::Value<Backend> rhs) {
+void PrinterVisitor::MatMul(ir::Value lhs, ir::Value rhs) {
   os << format("MatMul({}, {})", lhs, rhs);
 }
 

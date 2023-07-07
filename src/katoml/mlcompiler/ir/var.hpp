@@ -7,49 +7,46 @@ namespace katoml {
 namespace compiler {
 namespace ir {
 
-template<class Backend>
 class Var;
 
-template<class Backend>
-using VarPtr = std::shared_ptr<Var<Backend>>;
+using VarPtr = std::shared_ptr<Var>;
 
-template<class Backend>
 class Var {
 public:
   Var(tensor::DataType datatype, bool nograd = false) : 
     datatype(datatype), nograd(nograd) {}
 
-  Var(TTensorPtr&& tensor, bool nograd = false) : 
+  Var(TensorPtr&& tensor, bool nograd = false) : 
     tensor(std::move(tensor)), datatype(this->tensor->get_datatype()), nograd(nograd) {}
 
-  inline static VarPtr<Backend> create(TTensor&& tensor, bool nograd = false) {
-    return std::make_shared<Var<Backend>>(std::make_shared<TTensor>(std::move(tensor)), nograd);
+  inline static VarPtr create(Tensor&& tensor, bool nograd = false) {
+    return std::make_shared<Var>(std::make_shared<Tensor>(std::move(tensor)), nograd);
   }
-  inline static VarPtr<Backend> create(tensor::DataType datatype, bool nograd = false) {
-    return std::make_shared<Var<Backend>>(datatype, nograd);
+  inline static VarPtr create(tensor::DataType datatype, bool nograd = false) {
+    return std::make_shared<Var>(datatype, nograd);
   }
   const tensor::DataType get_datatype() const {
     return datatype;
   }
 
-  const TTensor& get_tensor() const {
+  const Tensor& get_tensor() const {
     return *tensor;
   }
-  TTensorPtr get_tensor_ptr() const {
+  TensorPtr get_tensor_ptr() const {
     return tensor;
   }
-  void set_tensor(TTensor&& tensor) {
-    this->tensor = std::make_shared<TTensor>(std::move(tensor));
+  void set_tensor(Tensor&& tensor) {
+    this->tensor = std::make_shared<Tensor>(std::move(tensor));
   }
-  const TTensor& get_grad() const {
+  const Tensor& get_grad() const {
     return *grad;
   }
-  TTensorPtr get_grad_ptr() const {
+  TensorPtr get_grad_ptr() const {
     return grad;
   }
-  void set_grad(TTensor&& grad) {
+  void set_grad(Tensor&& grad) {
     assert(!nograd);
-    this->grad = std::make_shared<TTensor>(std::move(grad));
+    this->grad = std::make_shared<Tensor>(std::move(grad));
   }
   bool is_nograd() const { return nograd; }
 
@@ -58,8 +55,8 @@ public:
   Var(Var&&) = default;
   Var& operator=(Var&&) = default;
 private:
-  TTensorPtr tensor;
-  TTensorPtr grad;
+  TensorPtr tensor;
+  TensorPtr grad;
   tensor::DataType datatype;
   bool nograd;
 };

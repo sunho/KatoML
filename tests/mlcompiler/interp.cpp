@@ -7,7 +7,7 @@ using namespace katoml::tensor;
 
 static auto device = construct_device();
 
-#define evaluate(eval) (device->compile(eval).forward())
+#define evaluate(eval) (device->compile(eval)->forward())
 
 TEST_CASE( "Add is computed", "[cpu]" ) {
   auto A = device->ones_i32(3, 3);
@@ -39,8 +39,8 @@ TEST_CASE( "Log Softmax backwards", "[cpu]" ) {
   auto W = device->var(device->backend().tensor<float>({1,2,3}));
   auto sf = device->log_softmax(W);
   auto program = device->compile(sf);
-  REQUIRE(program.forward().near_equals(device->backend().tensor<float>({-2.40760596,-1.40760596,-0.40760596})));
-  program.backward();
+  REQUIRE(program->forward().near_equals(device->backend().tensor<float>({-2.40760596,-1.40760596,-0.40760596})));
+  program->backward();
   REQUIRE(W.get_grad().near_equals(device->backend().tensor<float>({-7.15484549,-21.1671683,-59.25661077})));
 }
 
@@ -49,8 +49,8 @@ TEST_CASE( "Log Softmax backwards 2", "[cpu]" ) {
   auto W = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6}}));
   auto sf = device->log_softmax(W);
   auto program = device->compile(sf);
-  REQUIRE(program.forward().near_equals(device->backend().tensor<float>({{-2.40760596,-1.40760596,-0.40760596},{-2.40760596,-1.40760596,-0.40760596}})));
-  program.backward();
+  REQUIRE(program->forward().near_equals(device->backend().tensor<float>({{-2.40760596,-1.40760596,-0.40760596},{-2.40760596,-1.40760596,-0.40760596}})));
+  program->backward();
   REQUIRE(W.get_grad().near_equals(device->backend().tensor<float>({{-7.15484549,-21.1671683,-59.25661077},{-162.7944501,-444.23947731,-1209.28638048}})));
 }
 
@@ -60,8 +60,8 @@ TEST_CASE( "Mat mul backwards", "[cpu]" ) {
   auto B = device->var(device->backend().tensor<float>({{3,2,1},{6,5,4},{7,8,9}}));
   auto matmul = device->matmul(A, B);
   auto program = device->compile(matmul);
-  REQUIRE(program.forward().near_equals(device->backend().tensor<float>({{36,36 ,36},{84,81,78},{132,126,120}})));
-  program.backward();
+  REQUIRE(program->forward().near_equals(device->backend().tensor<float>({{36,36 ,36},{84,81,78},{132,126,120}})));
+  program->backward();
   REQUIRE(A.get_grad() == device->backend().tensor<float>({{6,15,24},{6,15,24},{6,15,24}}));
   REQUIRE(B.get_grad() == device->backend().tensor<float>({{12,12,12},{15,15,15},{18,18,18}}));
 }
@@ -74,10 +74,10 @@ TEST_CASE( "Log softmax sum backwards", "[cpu]" ) {
   auto sum2 = device->sum(A, {1});
   auto sf2 = device->log_softmax(sum2);
   auto program = device->compile(sf1);
-  program.forward(), program.backward();
+  program->forward(), program->backward();
   REQUIRE(A.get_grad().near_equals(device->backend().tensor<float>({{-4.88263374e+05,-9.80705112e+06,-1.96979906e+08},{-4.88263374e+05,-9.80705112e+06,-1.96979906e+08},{-4.88263374e+05,-9.80705112e+06,-1.96979906e+08}})));
   program = device->compile(sf2);
-  program.forward(), program.backward();
+  program->forward(), program->backward();
   REQUIRE(A.get_grad().near_equals(device->backend().tensor<float>({{-1.20928638e+03,-1.20928638e+03,-1.20928638e+03},{-9.80705112e+06,-9.80705112e+06,-9.80705112e+06},{-7.94673664e+10,-7.94673664e+10,-7.94673664e+10}})));
 }
 
@@ -89,11 +89,11 @@ TEST_CASE( "Log softmax mean backwards", "[cpu]" ) {
   auto mean2 = device->mean(A, {1});
   auto sf2 = device->log_softmax(mean2);
   auto program = device->compile(sf1);
-  REQUIRE(program.forward().near_equals(device->backend().tensor<float>({-2.40760596, -1.40760596, -0.40760596})));
-  program.backward();
+  REQUIRE(program->forward().near_equals(device->backend().tensor<float>({-2.40760596, -1.40760596, -0.40760596})));
+  program->backward();
   REQUIRE(A.get_grad().near_equals(device->backend().tensor<float>({{-54.2648167,-148.07982577,-403.09546016},{-54.2648167,-148.07982577,-403.09546016},{-54.2648167,-148.07982577,-403.09546016}})));
   program = device->compile(sf2);
-  REQUIRE(program.forward().near_equals(device->backend().tensor<float>({-6.05094576,-3.05094576,-0.0509457})));
-  program.backward();
+  REQUIRE(program->forward().near_equals(device->backend().tensor<float>({-6.05094576,-3.05094576,-0.0509457})));
+  program->backward();
   REQUIRE(A.get_grad().near_equals(device->backend().tensor<float>({{-7.05572277,-7.05572277,-7.05572277},{-148.07982577,-148.07982577,-148.07982577},{-2980.62465371,-2980.62465371,-2980.62465371}})));
 }

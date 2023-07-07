@@ -20,5 +20,5 @@ int main() {
 
   auto program = device->compile(A2);
   std::cout << "Evaluated: " << "\n";
-  std::cout << program.forward() << "\n";
+  std::cout << program->forward() << "\n";
 }

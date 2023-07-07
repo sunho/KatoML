@@ -1,0 +1,5 @@
+UNIOP_CPP(operator-, neg)
+UNIOP(log, log)
+UNIOP(exp, exp)
+UNIOP(diag, diag)
+UNIOP(copy, copy)

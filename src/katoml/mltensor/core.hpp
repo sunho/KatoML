@@ -3,10 +3,10 @@
 #include <optional>
 #include <random>
 #include <iostream>
+#include <memory>
 
 #include "core.hpp"
 #include "errors.hpp"
-#include "katoml/mltensor/core.hpp"
 #include "types.hpp"
 #include "iter_utils.hpp"
 
@@ -15,335 +15,126 @@ namespace tensor {
 
 static int64_t MAX_TENSOR_LOG_LIMIT = 128;
 
-template <typename T> concept signed_type = std::is_signed_v<T>; 
+template <typename T> concept signed_type = std::is_signed_v<T>;
 
-template <typename T>
-concept IExecutor = requires(T v, typename T::HandleView h, typename T::Handle eh, TensorDescriptor desc, AxisArray axis, Constant val, bool& res_bool) {
-  {v.relase(eh)};
-  {v.allocate(desc)} -> std::same_as<typename T::Handle>;
-  {v.get_data(eh)} -> std::same_as<void*>;
-  {v.is_alive(eh)} -> std::same_as<bool>;
-  {v.add(h, h, h)} -> std::same_as<bool>;
-  {v.add_assign(h, h)} -> std::same_as<bool>;
-  {v.sub(h, h, h)} -> std::same_as<bool>;
-  {v.sub_assign(h, h)} -> std::same_as<bool>;  
-  {v.mul(h, h, h)} -> std::same_as<bool>;
-  {v.div(h, h, h)} -> std::same_as<bool>;
-  {v.max(h, h, h)} -> std::same_as<bool>;
-  {v.min(h, h, h)} -> std::same_as<bool>;
-  {v.less(h, h, h)} -> std::same_as<bool>;
-  {v.less_eq(h, h, h)} -> std::same_as<bool>;
-  {v.matmul(h, h, h)} -> std::same_as<bool>;
-  {v.sum(h, h, h)} -> std::same_as<bool>;
-  {v.mean(h, h, h, axis)} -> std::same_as<bool>;
-  {v.reduce_max(h, h, h)} -> std::same_as<bool>;
-  {v.reduce_min(h, h, h)} -> std::same_as<bool>;
-  {v.copy(h, h)} -> std::same_as<bool>;
-  {v.diag(h, h)} -> std::same_as<bool>;
-  {v.fill(h, val)} -> std::same_as<bool>;
-  {v.equals(res_bool, h, h)} -> std::same_as<bool>;
-  {v.near_equals(res_bool, h, h)} -> std::same_as<bool>;
-  {v.clip(h, h, val, val)} -> std::same_as<bool>;
-  {v.log(h, h)} -> std::same_as<bool>;
-  {v.exp(h, h)} -> std::same_as<bool>;
-  {v.neg(h, h)} -> std::same_as<bool>;
+enum class BinOpcode {
+  #define BINOP(def_name, func_name) func_name,
+  #define BINOP_NO_CONST(def_name, func_name) BINOP(def_name, func_name)
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP(def_name, func_name)
+  #define BINOP_CPP(def_name, func_name) BINOP(def_name, func_name)
+  #include "operators/bin_def.inc"
+  #undef BINOP
+  #undef BINOP_NO_CONST
+  #undef BINOP_NO_CONST_CPP
+  #undef BINOP_CPP
 };
 
-template <typename T>
-concept IHandle = requires(T v) {
-  {v.get_ndims()} -> std::convertible_to<size_t>;
-  {v.get_element_type()} -> std::convertible_to<ElementType>;
-  {v.get_shape()} -> std::convertible_to<Shape>;
-  {v.get_strides()} -> std::convertible_to<Strides>;
+static inline const char* opcode_to_string(BinOpcode opcode) {
+  switch(opcode) {
+  #define BINOP(def_name, func_name) case BinOpcode::func_name: return #func_name;
+  #define BINOP_NO_CONST(def_name, func_name) BINOP(def_name, func_name)
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP(def_name, func_name)
+  #define BINOP_CPP(def_name, func_name) BINOP(def_name, func_name)
+  #include "operators/bin_def.inc"
+  #undef BINOP
+  #undef BINOP_NO_CONST
+  #undef BINOP_NO_CONST_CPP
+  #undef BINOP_CPP
+  }
+}
+
+enum class UniOpcode {
+  #define UNIOP(def_name, func_name) func_name,
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #include "operators/uni_def.inc"
+  #undef UNIOP
+  #undef UNIOP_CPP
 };
 
-template <typename T>
-concept IBackend = requires(T v, typename T::Handle h) {
-  requires IHandle<typename T::Handle>;
+static inline const char* opcode_to_string(UniOpcode opcode) {
+  switch(opcode) {
+  #define UNIOP(def_name, func_name) case UniOpcode::func_name: return #func_name;
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #include "operators/uni_def.inc"
+  #undef UNIOP
+  #undef UNIOP_CPP
+  }
+}
+
+enum class ReduceOpcode {
+  #define REDUCEOP(def_name, func_name) func_name,
+  #include "operators/reduce_def.inc"
+  #undef REDUCEOP
 };
+
+static inline const char* opcode_to_string(ReduceOpcode opcode) {
+  switch(opcode) {
+  #define REDUCEOP(def_name, func_name) case ReduceOpcode::func_name: return #func_name;
+  #include "operators/reduce_def.inc"
+  #undef REDUCEOP
+  }
+}
+
+enum class SelfOpcode {
+  #define SELFOP_CPP(def_name, func_name, fallback) func_name,
+  #include "operators/self_def.inc"
+  #undef SELFOP_CPP
+};
+
+static inline const char* opcode_to_string(SelfOpcode opcode) {
+  switch(opcode) {
+  #define SELFOP_CPP(def_name, func_name, fallback) case SelfOpcode::func_name: return #func_name;
+  #include "operators/self_def.inc"
+  #undef SELFOP_CPP
+  }
+}
+
+class ExecutorHandle {
+  public:
+  using HandleId = uint32_t;
+  static constexpr const HandleId null_id = std::numeric_limits<HandleId>::max();
+
+  ExecutorHandle() = default;
+  explicit ExecutorHandle(HandleId id)
+    : id(id) {
+  }
+
+  operator bool() const { return id != null_id; }
+  bool operator==(const ExecutorHandle &rhs) const { return id == rhs.id; }
+  bool operator!=(const ExecutorHandle &rhs) const { return id != rhs.id; }
+  HandleId get_id() const { return id; }
+  void reset() { id = null_id; }
+
+  protected:
+    HandleId id{ null_id };
+};
+
+class Executor {
+public:
+  struct HandleView {
+    ExecutorHandle handle{};
+    size_t offset{};
+    Shape shape{};
+    Strides strides{};
+  };
+
+  virtual ~Executor() = default;
+  virtual void relase(ExecutorHandle handle) = 0;
+  virtual ExecutorHandle allocate(const TensorDescriptor& desc) = 0;
+  virtual void* get_data(ExecutorHandle handle) = 0;
+  virtual bool is_alive(ExecutorHandle handle) = 0;
+  virtual bool binop(BinOpcode opcode, HandleView res, HandleView lhs, HandleView rhs) = 0;
+  virtual bool uniop(UniOpcode opcode, HandleView res, HandleView val) = 0;
+  virtual bool reduceop(ReduceOpcode opcode, HandleView res, HandleView res_std, HandleView val, const AxisArray& axis) = 0;
+  virtual bool selfop(SelfOpcode opcode, HandleView res, HandleView rhs) = 0;
+  virtual bool near_equals(bool& res, HandleView lhs, HandleView rhs) = 0;
+  virtual bool equals(bool& res, HandleView lhs, HandleView rhs) = 0;
+  virtual bool clip(HandleView res, HandleView val, Constant mn, Constant mx) = 0;
+  virtual bool fill(HandleView res, Constant val) = 0;
+};
+
 
 static Constant NEAR_EQUAL_EPS = 1e-10; 
-
-template<IBackend Backend>
-class TensorBase {
-using BackendHandle = typename Backend::Handle;
-public:
-  TensorBase(Backend& backend, BackendHandle handle, bool is_view = false) : backend(backend), handle(handle), is_view(is_view) {}
-  TensorBase(const TensorBase& other) = delete;
-  TensorBase& operator=(const TensorBase& other) = delete;
-  TensorBase(TensorBase&& other) : backend(other.backend), handle(other.handle), is_view(other.is_view) {
-    other.handle = {};
-  }
-  TensorBase& operator=(TensorBase&& other) {
-    std::swap(backend, other.backend);
-    std::swap(handle, other.handle);
-    std::swap(is_view, other.is_view);
-    return *this;
-  }
-  ~TensorBase() {
-    if (handle && !is_view) {
-      backend.get().release(handle);
-    }
-  }
-  int get_ndims() const { return handle.get_ndims(); }
-  ElementType get_element_type() const { return handle.get_element_type(); }
-  Shape get_shape() const { return handle.get_shape(); }
-  Strides get_strides() const { return handle.get_strides(); }
-  DataType get_datatype() const { return DataType(get_element_type(), get_shape()); }
-  TensorDescriptor get_descriptor() const { 
-    return TensorDescriptor(handle.get_element_type(), handle.get_shape(), handle.get_strides()); 
-  }
-  template<typename T, signed_type... Index>
-  T at(Index... index) const {
-    uint8_t* data = reinterpret_cast<uint8_t*>(get_data());
-    int i = 0;
-    size_t offset = 0;
-    ((offset += index * handle.get_strides()[i++]), ...);
-    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
-    return *reinterpret_cast<const T*>(data + offset);
-  }
-  template<typename T, signed_type... Index>
-  T& at(Index... index) {
-    uint8_t* data = reinterpret_cast<uint8_t*>(get_data());
-    int i = 0;
-    size_t offset = 0;
-    ((offset += index * handle.get_strides()[i++]), ...);
-    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
-    return *reinterpret_cast<T*>(data + offset);
-  }
-
-  #define BINOP_NO_CONST(def_name, func_name)\
-  TensorBase def_name(const TensorBase& rhs) const {\
-    sanity_check(rhs);\
-    return TensorBase(backend.get(), backend.get().func_name(handle, rhs.handle));\
-  }
-  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
-  #define BINOP(def_name, func_name) \
-  BINOP_NO_CONST(def_name, func_name) \
-  TensorBase def_name(Constant rhs) const {\
-    sanity_check();\
-    auto constant = backend.get().constant(get_element_type(), rhs);\
-    return def_name(constant);\
-  }
-  #define BINOP_CPP(def_name, func_name) \
-  BINOP(def_name, func_name)\
-  friend TensorBase def_name(Constant lhs, const TensorBase& rhs) {\
-    auto constant = rhs.backend.get().constant(rhs.get_element_type(), lhs);\
-    return constant.def_name(rhs);\
-  }
-  #define UNIOP(def_name, func_name) \
-  TensorBase def_name() const {\
-    sanity_check();\
-    return TensorBase(backend.get(), backend.get().func_name(handle));\
-  }
-  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
-  #define REDUCEOP(def_name, func_name) \
-  TensorBase def_name(const AxisArray& axis = AllAxis) const {\
-    sanity_check();\
-    return TensorBase(backend.get(), backend.get().func_name(handle, axis));\
-  }
-  #define SELFOP_CPP(def_name, func_name) \
-  TensorBase& def_name(const TensorBase& rhs) {\
-    sanity_check(rhs);\
-    assign_handle(backend.get().func_name(handle, rhs.handle));\
-    return *this;\
-  }
-  #include "operators.inc"
-
-  bool operator==(const TensorBase& rhs) const {
-    sanity_check(rhs);
-    return backend.get().equals(handle, rhs.handle);
-  }
-  bool near_equals(const TensorBase& rhs) const {
-    sanity_check(rhs);
-    return backend.get().near_equals(handle, rhs.handle);
-  }
-  TensorBase clip(Constant mn, Constant mx) const {
-    sanity_check();
-    return TensorBase(backend.get(), backend.get().clip(handle, mn, mx));
-  }
-  
-  // ==========================================
-  // * operations that can return tensor view *
-  TensorBase reshaped(Shape shape) const {
-    sanity_check();
-    return wrap(backend.get().reshape(handle, shape));
-  }
-  TensorBase transposed() const {
-    sanity_check();
-    return wrap(backend.get().transpose(handle));
-  }
-  TensorBase axis_extended() const {
-    sanity_check();
-    return reshaped(get_shape().extend_axis());
-  }
-  // ==========================================
-
-  // =============================
-  // * self modifying operations *
-  void fill(Constant val) {
-    sanity_check();
-    backend.get().fill(handle, val);
-  }
-  void reshape(Shape shape) {
-    sanity_check();
-    assign_handle(backend.get().reshape(handle, shape));
-  }
-  void transpose() {
-    assign_handle(backend.get().transpose(handle));
-  }
-  void extend_axis() {
-    sanity_check();
-    reshape(get_shape().extend_axis());
-  }
-  // =============================
-
-  friend std::ostream& operator<<(std::ostream& os, const TensorBase& tensor) {
-    std::ostringstream ss("");
-    call_with_type([&]<typename T>(type_wrapper<T>) {
-      IterUtils::ROffsetView rview(tensor.get_data(),tensor.get_descriptor());
-      const auto level_in = [&](int level) {
-        ss << "[";
-      };
-      const auto level_out = [&](int level, bool last) {
-        if (last)
-          ss << "]";
-        else
-          ss << "], ";
-      };
-      const auto read = [&](T val, bool last) {
-        if (last)
-          ss << val;
-        else
-          ss << val << ", ";
-      };
-      IterUtils::per_element_read<T>(rview, level_in, level_out, read);
-    }, tensor.get_element_type());
-    if (ss.tellp() > MAX_TENSOR_LOG_LIMIT) {
-      return os << "[" << tensor.get_datatype() << "]";
-    }
-    os << ss.str();
-    return os;
-  }
-protected:
-  void* get_data() {
-    return backend.get().get_data(handle);
-  }
-  const void* get_data() const {
-    return backend.get().get_data(handle);
-  }
-  TensorBase wrap(BackendHandle newi) const {
-    if (handle == newi) 
-      return TensorBase(backend.get(), newi, true);
-    return TensorBase(backend.get(), newi);
-  }
-  void assign_handle(BackendHandle newi) {
-    CHECK_OR_THROW(!is_view || handle == newi, ViewAssignAllocationError)
-    if (handle != newi) {
-      backend.get().release(handle);
-    }
-    handle = newi;
-  }
-  void sanity_check() const {
-    if (is_view)
-      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
-  }
-  void sanity_check(const TensorBase& other) const {
-    CHECK_OR_THROW(&backend.get() == &other.backend.get(), BackendMismatchError)
-    if (is_view)
-      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
-    if (other.is_view)
-      CHECK_OR_THROW(backend.get().is_alive(other.handle), UseAfterFreeError)
-  }
-  std::reference_wrapper<Backend> backend;
-  bool is_view;
-  BackendHandle handle;
-};
-
-template<IBackend Backend, typename T>
-class TypedTensorBase : public TensorBase<Backend> {
-using BackendHandle = typename Backend::Handle;
-public:
-  TypedTensorBase() = default;
-  TypedTensorBase(TensorBase<Backend>&& other) : TensorBase<Backend>(std::move(other)) {
-    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
-  }
-  TypedTensorBase(TypedTensorBase&& other) : TensorBase<Backend>(std::move(other)) {
-    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
-  }
-  TypedTensorBase(const TypedTensorBase& other) = delete;
-  TypedTensorBase& operator=(const TypedTensorBase& other) = delete;
-  TypedTensorBase& operator=(TensorBase<Backend>&& other) {
-    TensorBase<Backend>::operator=(std::move(other));
-    return *this;
-  }
-  TypedTensorBase& operator=(TypedTensorBase&& other) {
-    TensorBase<Backend>::operator=(std::move(other));
-    return *this;
-  }
-  template<typename F, signed_type... Index> F at(Index... index) const = delete;
-  template<typename F, signed_type... Index> F& at(Index... index) = delete;
-  template<signed_type... Index>
-  T operator()(Index... index) const { return TensorBase<Backend>::template at<T>(index...); }
-  template<signed_type... Index>
-  T& operator()(Index...index) { return TensorBase<Backend>::template at<T>(index...); }
-
-  #define BINOP_NO_CONST(def_name, func_name)\
-  TensorBase<Backend> def_name(const TensorBase<Backend>& rhs) const = delete;\
-  TypedTensorBase def_name(const TypedTensorBase& rhs) const {\
-    return TensorBase<Backend>::def_name(rhs);\
-  }
-  #define BINOP(def_name, func_name) \
-  BINOP_NO_CONST(def_name, func_name) \
-  TypedTensorBase def_name(Constant rhs) const {\
-    return TensorBase<Backend>::def_name(rhs);\
-  }
-  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
-  #define BINOP_CPP(def_name, func_name) \
-  BINOP(def_name, func_name)\
-  friend TypedTensorBase def_name(Constant lhs, const TypedTensorBase& rhs) {\
-    return TensorBase<Backend>::def_name(lhs, rhs);\
-  }
-  #define UNIOP(def_name, func_name) \
-  TypedTensorBase def_name() const {\
-    return TensorBase<Backend>::def_name();\
-  }
-  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
-  #define REDUCEOP(def_name, func_name) \
-  TypedTensorBase def_name(const AxisArray& axis = AllAxis) const {\
-    return TensorBase<Backend>::def_name(axis);\
-  }
-  #define SELFOP_CPP(def_name, func_name) \
-  TypedTensorBase& def_name(const TypedTensorBase& rhs) {\
-    return TensorBase<Backend>::def_name(rhs);\
-  }
-  #include "operators.inc"
-
-  bool operator==(const TensorBase<Backend>& rhs) const = delete;
-  bool operator==(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::operator==(rhs);
-  }
-  bool near_equals(const TensorBase<Backend>& rhs) const = delete;
-  bool near_equals(const TypedTensorBase& rhs) const {
-    return TensorBase<Backend>::near_equals(rhs);
-  }
-  TypedTensorBase clip(Constant mn, Constant mx) const {
-    return TensorBase<Backend>::clip(mn, mx);
-  }
-  
-  // ==========================================
-  // * operations that can return tensor view *
-  TypedTensorBase reshaped(Shape shape) const {
-    return TensorBase<Backend>::reshaped(shape);
-  }
-  TypedTensorBase transposed() const {
-    return TensorBase<Backend>::transposed();
-  }
-  TypedTensorBase axis_extended() const {
-    return TensorBase<Backend>::axis_extended();
-  }
-  // ==========================================
-};
 
 static inline bool can_broadcast_shape(Shape lhs, Shape rhs) {
   if (lhs == rhs) return true;
@@ -452,12 +243,13 @@ static inline Shape calculate_reshape_shape(Shape old, Shape newi) {
 static std::random_device rd;
 static std::mt19937 rng(rd());
 
-template<IExecutor Executor>
+class Tensor;
+template<typename T>
+class TypedTensor;
+
 class Backend {
-using ExecutorHandleView = typename Executor::HandleView;
-using ExecutorHandle = typename Executor::Handle;
 public:
-  Backend(Executor&& executor) 
+  Backend(std::unique_ptr<Executor>&& executor) 
     : executor(std::move(executor)) {}
   Backend(Backend&&) = default;
   Backend(const Backend&) = delete;
@@ -479,7 +271,7 @@ public:
     Strides get_strides() const { return strides; }
     TensorDescriptor get_descriptor() const { return TensorDescriptor(element_type, shape, strides); }
     ExecutorHandle get_ehandle() const { return handle; }
-    ExecutorHandleView view() const { return ExecutorHandleView{handle, offset, shape, strides}; }
+    Executor::HandleView view() const { return Executor::HandleView{handle, offset, shape, strides}; }
     operator bool() const {
       return !empty;
     }
@@ -499,288 +291,131 @@ public:
     bool empty { true };
   };
 
-  using Tensor = TensorBase<Backend>;
-  template<typename T>
-  using TypedTensor = TypedTensorBase<Backend, T>;
-  friend class TensorBase<Backend>;
-
   #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
   template<signed_type... Sz> \
-  Tensor zeros_##name(Sz... sz) {\
-    return zeros(DataType(ElementType::enum_name, Shape({sz...})));\
-  }\
+  Tensor zeros_##name(Sz... sz); \
   template<signed_type... Sz> \
-  Tensor ones_##name(Sz... sz) {\
-    return ones(DataType(ElementType::enum_name, Shape({sz...})));\
-  }\
+  Tensor ones_##name(Sz... sz); \
   template<signed_type... Sz> \
-  Tensor uniform_##name(Sz... sz) {\
-    return uniform(DataType(ElementType::enum_name, Shape({sz...})));\
-  }
+  Tensor uniform_##name(Sz... sz);
   #include "element_type.inc"
   #undef ELEMENT_TYPE
 
   #define BINOP_NO_CONST(def_name, func_name)\
-  Tensor def_name(const Tensor& lhs, const Tensor& rhs) {\
-    return lhs.def_name(rhs);\
-  }
+  inline Tensor def_name(const Tensor& lhs, const Tensor& rhs);
   #define BINOP_NO_CONST_CPP(def_name, func_name) ;
   #define BINOP(def_name, func_name) \
   BINOP_NO_CONST(def_name, func_name) \
-  Tensor def_name(const Tensor& lhs, Constant rhs) {\
-    return lhs.def_name(rhs);\
-  }\
-  Tensor def_name(Constant lhs, const Tensor& rhs) {\
-    auto c = constant(rhs.get_element_type(), lhs);\
-    return c.def_name(rhs);\
-  }
+  inline Tensor def_name(const Tensor& lhs, Constant rhs); \
+  inline Tensor def_name(Constant lhs, const Tensor& rhs);
   #define BINOP_CPP(def_name, func_name) ;
-  #define UNIOP(def_name, func_name) \
-  Tensor def_name(const Tensor& val) {\
-    return val.def_name();\
-  }
+  #define UNIOP(def_name, func_name) inline Tensor def_name(const Tensor& val);
   #define UNIOP_CPP(def_name, func_name) ;
-  #define REDUCEOP(def_name, func_name) \
-  Tensor def_name(const Tensor& val, const AxisArray& axis = AllAxis) {\
-    return val.def_name(axis);\
-  }
-  #define SELFOP_CPP(def_name, func_name) ;
-  #include "operators.inc"
+  #define REDUCEOP(def_name, func_name) inline Tensor def_name(const Tensor& val, const AxisArray& axis = AllAxis);
+  #define SELFOP_CPP(def_name, func_name, fallback) ;
+  #include "operators/operators.inc"
 
-  Tensor zeros(DataType datatype) {
-    TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
-    return make_tensor(allocate(descriptor));
-  }
-  
-  Tensor ones(DataType datatype) {
-    auto res = zeros(datatype);
-    res.fill(1);
-    return res;
-  }
-
+  inline Tensor zeros(DataType datatype);
+  inline Tensor ones(DataType datatype);
   template<typename T>
-  Tensor tensor(const std::vector<T>& data) {
-    Shape shape = Shape({(int64_t)data.size()});
-    auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
-    for (int i=0;i<shape[0];i++){
-      res.template at<T>(i) = data[i];
-    }
-    return res;
-  }
-
+  inline Tensor tensor(const std::vector<T>& data);
   template<typename T>
-  Tensor tensor(const std::vector<std::vector<T>>& data) {
-    Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size()});
-    auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
-    for (int i=0;i<shape[0];i++){
-      for (int j=0;j<shape[1];j++){
-        res.template at<T>(i,j) = data[i][j];
-      }
-    }
-    return res;
-  }
-
+  inline Tensor tensor(const std::vector<std::vector<T>>& data);
   template<typename T>
-  Tensor tensor(const std::vector<std::vector<std::vector<T>>>& data) {
-    Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size(), (int64_t)data[0][0].size()});
-    auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
-    for (int i=0;i<shape[0];i++){
-      for (int j=0;j<shape[1];j++){
-        for (int k=0;k<shape[2];k++){
-          res.template at<T>(i,j,k) = data[i][j][k];
-        }
-      }
-    }
-    return res;
-  }
-
-  Tensor tensor(DataType datatype, Constant val) {
-    auto res = zeros(datatype);
-    res.fill(val);
-    return res;
-  }
-
-  Tensor constant(ElementType element_type, Constant val) {
-    auto res = zeros(DataType(element_type, Shape({1})));
-    res.fill(val);
-    return res;
-  }
-
+  inline Tensor tensor(const std::vector<std::vector<std::vector<T>>>& data);
+  inline Tensor tensor(DataType datatype, Constant val);
+  inline Tensor constant(ElementType element_type, Constant val);
   template<typename T>
-  Tensor constant(T val) {
-    auto res = zeros(DataType(find_element_type(type_wrapper<T>()), Shape({1})));
-    res.fill(val);
-    return res;
-  }
-
-  Tensor uniform(DataType datatype, double mn=0.0, double mx=1.0) {
-    TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
-    Handle res = allocate(descriptor);
-    call_with_type([&]<typename T>(type_wrapper<T>) {
-      IterUtils::WOffsetView view(get_data(res), descriptor);
-      size_t total = view.shape[-1];
-      auto operation = [](T a, std::pair<double, double> range) {
-        std::uniform_real_distribution<> dist(range.first, range.second);
-        return static_cast<T>(dist(rng));
-      };
-      IterUtils::per_element_self<T, std::pair<double, double>, operation>(view, {mn, mx});
-    }, datatype.get_element_type());
-    return make_tensor(res);
-  }
-
-  Tensor normalize(const Tensor& tensor) {
-    return tensor / (tensor * tensor).sum();
-  }
-
+  inline Tensor constant(T val);
+  inline Tensor uniform(DataType datatype, double mn=0.0, double mx=1.0);
+  inline Tensor normalize(const Tensor& tensor);
   template<typename T, signed_type... Sz>
-  TypedTensor<T> zeros(Sz... sz) {
-    TensorDescriptor descriptor(Shape({sz...}), find_element_type(type_wrapper<T>()));
-    return make_tensor(allocate(descriptor));
-  }
+  inline TypedTensor<T> zeros(Sz... sz);
+
+  friend class Tensor;
 private:
-  Handle add(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("add", lhs, rhs);
+  std::unique_ptr<Executor> executor;
+
+  Handle binop(BinOpcode opcode, Handle lhs, Handle rhs) {
+    if (opcode == BinOpcode::matmul) {
+      return matmul(lhs, rhs);
+    }
+    Handle res = allocate_for_bin_op(opcode_to_string(opcode), lhs, rhs);
     per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.add(res.view(), lhs.view(), rhs.view()));
+    unwrap(executor->binop(opcode, res.view(), lhs.view(), rhs.view()));
     return res;
   }
-  Handle add_assign(Handle res, Handle rhs) {
-    if (!can_no_alloc_bin_assign_op("add_assign", res, rhs))
-      return add(res, rhs);
+
+  Handle uniop(UniOpcode opcode, Handle val) {
+    if (opcode == UniOpcode::diag)
+      return diag(val);
+    Handle res = allocate(TensorDescriptor(val.get_shape(), val.get_element_type()));
+    unwrap(executor->uniop(opcode, res.view(), val.view()));
+    return res;
+  }
+
+  Handle selfop(SelfOpcode opcode, Handle res, Handle rhs) {
+    switch(opcode) {
+    #define SELFOP_CPP(def_name, func_name, fallback) case SelfOpcode::func_name: {\
+      if (!can_no_alloc_bin_assign_op(opcode_to_string(opcode), res, rhs))\
+        return binop(BinOpcode::fallback, res, rhs); \
+      break;\
+    }
+    #include "operators/self_def.inc"
+    #undef SELFOP_CPP
+    }
     per_element_bin_op_prepare(res, rhs);
-    unwrap(executor.add_assign(res.view(), rhs.view()));   
+    unwrap(executor->selfop(opcode, res.view(), rhs.view()));   
     return res;
   }
-  Handle sub(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("sub", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.sub(res.view(), lhs.view(), rhs.view()));
+
+  Handle reduceop(ReduceOpcode opcode, Handle val, AxisArray axis) {
+    Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
+    Handle res_ = reduce_prepare(res, val, axis);
+    unwrap(executor->reduceop(opcode, res.view(), res_.view(), val.view(), axis));
     return res;
   }
-  Handle sub_assign(Handle res, Handle rhs) {
-    if (!can_no_alloc_bin_assign_op("sub_assign", res, rhs))
-      return sub(res, rhs);
-    per_element_bin_op_prepare(res, rhs);
-    unwrap(executor.sub_assign(res.view(), rhs.view()));   
-    return res;
-  }
-  Handle mul(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("mul", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.mul(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle div(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("div", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.div(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle max(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("max", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.max(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle min(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("min", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.min(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle less(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("less", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.less(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle less_eq(Handle lhs, Handle rhs) {
-    Handle res = allocate_for_bin_op("less_eq", lhs, rhs);
-    per_element_bin_op_prepare(lhs, rhs);
-    unwrap(executor.less_eq(res.view(), lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle more(Handle lhs, Handle rhs) {
-    return less(rhs, lhs);
-  }
-  Handle more_eq(Handle lhs, Handle rhs) {
-    return less_eq(rhs, lhs);
-  }
+
   bool equals(Handle lhs, Handle rhs) {
     if (lhs.shape != rhs.shape) return false;
     bool res;
-    unwrap(executor.equals(res, lhs.view(), rhs.view()));
+    unwrap(executor->equals(res, lhs.view(), rhs.view()));
     return res;
   }
   bool near_equals(Handle lhs, Handle rhs) {
     if (lhs.shape != rhs.shape) return false;
     bool res;
-    unwrap(executor.near_equals(res, lhs.view(), rhs.view()));
-    return res;
-  }
-  Handle matmul(Handle lhs, Handle rhs) {
-    TYPE_CHECK_OR_THROW(can_matmul(lhs.get_datatype(), rhs.get_datatype()), "matmul", lhs.get_datatype(), rhs.get_datatype())
-    Handle res = allocate(TensorDescriptor(calculate_matmul_shape(lhs.get_shape(), rhs.get_shape()), lhs.get_element_type()));
-    matmul_prepare(lhs, rhs);
-    unwrap(executor.matmul(res.view(), lhs.view(), rhs.view()));
+    unwrap(executor->near_equals(res, lhs.view(), rhs.view()));
     return res;
   }
   Handle clip(Handle val, Constant mn, Constant mx) {
     Handle res = allocate(TensorDescriptor(val.get_shape(), val.get_element_type()));
-    unwrap(executor.clip(res.view(), val.view(), mn, mx));
+    unwrap(executor->clip(res.view(), val.view(), mn, mx));
     return res;
   }
-  Handle log(Handle val) {
-    Handle res = allocate(TensorDescriptor(val.get_shape(), val.get_element_type()));
-    unwrap(executor.log(res.view(), val.view()));
+
+  Handle matmul(Handle lhs, Handle rhs) {
+    TYPE_CHECK_OR_THROW(can_matmul(lhs.get_datatype(), rhs.get_datatype()), "matmul", lhs.get_datatype(), rhs.get_datatype())
+    Handle res = allocate(TensorDescriptor(calculate_matmul_shape(lhs.get_shape(), rhs.get_shape()), lhs.get_element_type()));
+    matmul_prepare(lhs, rhs);
+    unwrap(executor->binop(BinOpcode::matmul, res.view(), lhs.view(), rhs.view()));
     return res;
   }
-  Handle exp(Handle val) {
-    Handle res = allocate(TensorDescriptor(val.get_shape(), val.get_element_type()));
-    unwrap(executor.exp(res.view(), val.view()));
+ 
+  Handle diag(Handle arr) {
+    TYPE_CHECK_OR_THROW(can_diag_shape(arr.get_shape()), "diag", arr.get_datatype())
+    Handle res = allocate(arr.get_descriptor().set_shape(calculate_diag_shape(arr.get_shape())));
+    executor->uniop(UniOpcode::diag, res.view(), arr.view());
     return res;
   }
-  Handle neg(Handle val) {
-    Handle res = allocate(TensorDescriptor(val.get_shape(), val.get_element_type()));
-    unwrap(executor.neg(res.view(), val.view()));
-    return res;
-  }
-  Handle sum(Handle val, AxisArray axis) {
-    Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
-    Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.sum(res.view(), res_.view(), val.view()));
-    return res;
-  }
-  Handle mean(Handle val, AxisArray axis) {
-    Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
-    Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.mean(res.view(), res_.view(), val.view(), axis));
-    return res;
-  }
-  Handle max(Handle val, AxisArray axis) {
-    Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
-    Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.reduce_max(res.view(), res_.view(), val.view()));
-    return res;
-  }
-  Handle min(Handle val, AxisArray axis) {
-    Handle res = allocate(val.get_descriptor().set_shape(val.get_shape().reduce(axis)));
-    Handle res_ = reduce_prepare(res, val, axis);
-    unwrap(executor.reduce_min(res.view(), res_.view(), val.view()));
-    return res;
-  }
-  Tensor make_tensor(Handle handle) { return Tensor(*this, handle); }
+
+  inline Tensor make_tensor(Handle handle);
   Handle allocate(TensorDescriptor descriptor) {
-    ExecutorHandle ehandle = executor.allocate(descriptor);
+    ExecutorHandle ehandle = executor->allocate(descriptor);
     return Handle(ehandle, descriptor);
   }
-  Handle copy(Handle handle) {
-    Handle res = allocate(handle.get_descriptor());
-    executor.copy(res.view(), handle.view());
-    return res;
-  }
   void fill(Handle handle, Constant val) {
-    executor.fill(handle.view(), val);
+    unwrap(executor->fill(handle.view(), val));
   }
   Handle reshape(Handle handle, Shape shape) {
     TYPE_CHECK_OR_THROW(can_reshape(handle.shape, shape), "reshape", handle.get_datatype(), handle.get_datatype().set_shape(shape))
@@ -804,20 +439,15 @@ private:
     }
     return handle;
   }
-  Handle diag(Handle arr) {
-    TYPE_CHECK_OR_THROW(can_diag_shape(arr.get_shape()), "diag", arr.get_datatype())
-    Handle res = allocate(arr.get_descriptor().set_shape(calculate_diag_shape(arr.get_shape())));
-    executor.diag(res.view(), arr.view());
-    return res;
-  }
+
   void release(Handle handle) {
-    executor.relase(handle.get_ehandle());
+    executor->relase(handle.get_ehandle());
   }
   void* get_data(Handle handle) {
-    return executor.get_data(handle.get_ehandle());
+    return executor->get_data(handle.get_ehandle());
   }
   bool is_alive(Handle handle) {
-    return executor.is_alive(handle.get_ehandle());
+    return executor->is_alive(handle.get_ehandle());
   }
   Handle allocate_for_bin_op(const char* opname, Handle lhs, Handle rhs) {
     TYPE_CHECK_OR_THROW(can_broadcast(lhs.get_datatype(), rhs.get_datatype()), opname, lhs.get_datatype(), rhs.get_datatype())
@@ -882,8 +512,426 @@ private:
     smaller = new_strides;
   }
 
-  Executor executor;
 };
+
+class Tensor {
+public:
+  Tensor(Backend& backend, Backend::Handle handle, bool is_view = false) : backend(backend), handle(handle), is_view(is_view) {}
+  Tensor(const Tensor& other) = delete;
+  Tensor& operator=(const Tensor& other) = delete;
+  Tensor(Tensor&& other) : backend(other.backend), handle(other.handle), is_view(other.is_view) {
+    other.handle = {};
+  }
+  Tensor& operator=(Tensor&& other) {
+    std::swap(backend, other.backend);
+    std::swap(handle, other.handle);
+    std::swap(is_view, other.is_view);
+    return *this;
+  }
+  ~Tensor() {
+    if (handle && !is_view) {
+      backend.get().release(handle);
+    }
+  }
+  int get_ndims() const { return handle.get_ndims(); }
+  ElementType get_element_type() const { return handle.get_element_type(); }
+  Shape get_shape() const { return handle.get_shape(); }
+  Strides get_strides() const { return handle.get_strides(); }
+  DataType get_datatype() const { return DataType(get_element_type(), get_shape()); }
+  TensorDescriptor get_descriptor() const { 
+    return TensorDescriptor(handle.get_element_type(), handle.get_shape(), handle.get_strides()); 
+  }
+  template<typename T, signed_type... Index>
+  T at(Index... index) const {
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(get_data());
+    int i = 0;
+    size_t offset = 0;
+    ((offset += index * handle.get_strides()[i++]), ...);
+    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
+    return *reinterpret_cast<const T*>(data + offset);
+  }
+  template<typename T, signed_type... Index>
+  T& at(Index... index) {
+    uint8_t* data = reinterpret_cast<uint8_t*>(get_data());
+    int i = 0;
+    size_t offset = 0;
+    ((offset += index * handle.get_strides()[i++]), ...);
+    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
+    return *reinterpret_cast<T*>(data + offset);
+  }
+
+  #define BINOP_NO_CONST(def_name, func_name)\
+  Tensor def_name(const Tensor& rhs) const {\
+    sanity_check(rhs);\
+    return Tensor(backend.get(), backend.get().binop(BinOpcode::func_name, handle, rhs.handle));\
+  }
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
+  #define BINOP(def_name, func_name) \
+  BINOP_NO_CONST(def_name, func_name) \
+  Tensor def_name(Constant rhs) const {\
+    sanity_check();\
+    auto constant = backend.get().constant(get_element_type(), rhs);\
+    return def_name(constant);\
+  }
+  #define BINOP_CPP(def_name, func_name) \
+  BINOP(def_name, func_name)\
+  friend Tensor def_name(Constant lhs, const Tensor& rhs) {\
+    auto constant = rhs.backend.get().constant(rhs.get_element_type(), lhs);\
+    return constant.def_name(rhs);\
+  }
+  #define UNIOP(def_name, func_name) \
+  Tensor def_name() const {\
+    sanity_check();\
+    return Tensor(backend.get(), backend.get().uniop(UniOpcode::func_name, handle));\
+  }
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #define REDUCEOP(def_name, func_name) \
+  Tensor def_name(const AxisArray& axis = AllAxis) const {\
+    sanity_check();\
+    return Tensor(backend.get(), backend.get().reduceop(ReduceOpcode::func_name, handle, axis));\
+  }
+  #define SELFOP_CPP(def_name, func_name, fallback) \
+  Tensor& def_name(const Tensor& rhs) {\
+    sanity_check(rhs);\
+    assign_handle(backend.get().selfop(SelfOpcode::func_name, handle, rhs.handle));\
+    return *this;\
+  }
+  #include "operators/operators.inc"
+
+  bool operator==(const Tensor& rhs) const {
+    sanity_check(rhs);
+    return backend.get().equals(handle, rhs.handle);
+  }
+  bool near_equals(const Tensor& rhs) const {
+    sanity_check(rhs);
+    return backend.get().near_equals(handle, rhs.handle);
+  }
+  Tensor clip(Constant mn, Constant mx) const {
+    sanity_check();
+    return Tensor(backend.get(), backend.get().clip(handle, mn, mx));
+  }
+  
+  // ==========================================
+  // * operations that can return tensor view *
+  Tensor reshaped(Shape shape) const {
+    sanity_check();
+    return wrap(backend.get().reshape(handle, shape));
+  }
+  Tensor transposed() const {
+    sanity_check();
+    return wrap(backend.get().transpose(handle));
+  }
+  Tensor axis_extended() const {
+    sanity_check();
+    return reshaped(get_shape().extend_axis());
+  }
+  // ==========================================
+
+  // =============================
+  // * self modifying operations *
+  void fill(Constant val) {
+    sanity_check();
+    backend.get().fill(handle, val);
+  }
+  void reshape(Shape shape) {
+    sanity_check();
+    assign_handle(backend.get().reshape(handle, shape));
+  }
+  void transpose() {
+    assign_handle(backend.get().transpose(handle));
+  }
+  void extend_axis() {
+    sanity_check();
+    reshape(get_shape().extend_axis());
+  }
+  // =============================
+
+  friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
+    std::ostringstream ss("");
+    call_with_type([&]<typename T>(type_wrapper<T>) {
+      IterUtils::ROffsetView rview(tensor.get_data(),tensor.get_descriptor());
+      const auto level_in = [&](int level) {
+        ss << "[";
+      };
+      const auto level_out = [&](int level, bool last) {
+        if (last)
+          ss << "]";
+        else
+          ss << "], ";
+      };
+      const auto read = [&](T val, bool last) {
+        if (last)
+          ss << val;
+        else
+          ss << val << ", ";
+      };
+      IterUtils::per_element_read<T>(rview, level_in, level_out, read);
+    }, tensor.get_element_type());
+    if (ss.tellp() > MAX_TENSOR_LOG_LIMIT) {
+      return os << "[" << tensor.get_datatype() << "]";
+    }
+    os << ss.str();
+    return os;
+  }
+protected:
+  void* get_data() {
+    return backend.get().get_data(handle);
+  }
+  const void* get_data() const {
+    return backend.get().get_data(handle);
+  }
+  Tensor wrap(Backend::Handle newi) const {
+    if (handle == newi) 
+      return Tensor(backend.get(), newi, true);
+    return Tensor(backend.get(), newi);
+  }
+  void assign_handle(Backend::Handle newi) {
+    CHECK_OR_THROW(!is_view || handle == newi, ViewAssignAllocationError)
+    if (handle != newi) {
+      backend.get().release(handle);
+    }
+    handle = newi;
+  }
+  void sanity_check() const {
+    if (is_view)
+      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
+  }
+  void sanity_check(const Tensor& other) const {
+    CHECK_OR_THROW(&backend.get() == &other.backend.get(), BackendMismatchError)
+    if (is_view)
+      CHECK_OR_THROW(backend.get().is_alive(handle), UseAfterFreeError)
+    if (other.is_view)
+      CHECK_OR_THROW(backend.get().is_alive(other.handle), UseAfterFreeError)
+  }
+  std::reference_wrapper<Backend> backend;
+  bool is_view;
+  Backend::Handle handle;
+};
+
+template<typename T>
+class TypedTensor : public Tensor {
+public:
+  TypedTensor() = default;
+  TypedTensor(Tensor&& other) : Tensor(std::move(other)) {
+    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
+  }
+  TypedTensor(TypedTensor&& other) : Tensor(std::move(other)) {
+    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
+  }
+  TypedTensor(const TypedTensor& other) = delete;
+  TypedTensor& operator=(const TypedTensor& other) = delete;
+  TypedTensor& operator=(Tensor&& other) {
+    Tensor::operator=(std::move(other));
+    return *this;
+  }
+  TypedTensor& operator=(TypedTensor&& other) {
+    Tensor::operator=(std::move(other));
+    return *this;
+  }
+  template<typename F, signed_type... Index> F at(Index... index) const = delete;
+  template<typename F, signed_type... Index> F& at(Index... index) = delete;
+  template<signed_type... Index>
+  T operator()(Index... index) const { return Tensor::at<T>(index...); }
+  template<signed_type... Index>
+  T& operator()(Index...index) { return Tensor::at<T>(index...); }
+
+  #define BINOP_NO_CONST(def_name, func_name)\
+  Tensor def_name(const Tensor& rhs) const = delete;\
+  TypedTensor def_name(const TypedTensor& rhs) const {\
+    return Tensor::def_name(rhs);\
+  }
+  #define BINOP(def_name, func_name) \
+  BINOP_NO_CONST(def_name, func_name) \
+  TypedTensor def_name(Constant rhs) const {\
+    return Tensor::def_name(rhs);\
+  }
+  #define BINOP_NO_CONST_CPP(def_name, func_name) BINOP_NO_CONST(def_name, func_name)
+  #define BINOP_CPP(def_name, func_name) \
+  BINOP(def_name, func_name) 
+  // FIXME
+  // friend TypedTensor def_name(Constant lhs, const TypedTensor& rhs) {\
+  //   return Tensor::def_name(lhs, rhs);\
+  // }
+  #define UNIOP(def_name, func_name) \
+  TypedTensor def_name() const {\
+    return Tensor::def_name();\
+  }
+  #define UNIOP_CPP(def_name, func_name) UNIOP(def_name, func_name)
+  #define REDUCEOP(def_name, func_name) \
+  TypedTensor def_name(const AxisArray& axis = AllAxis) const {\
+    return Tensor::def_name(axis);\
+  }
+  #define SELFOP_CPP(def_name, func_name, fallback) \
+  TypedTensor& def_name(const TypedTensor& rhs) {\
+    return Tensor::def_name(rhs);\
+  }
+  #include "operators/operators.inc"
+
+  bool operator==(const Tensor& rhs) const = delete;
+  bool operator==(const TypedTensor& rhs) const {
+    return Tensor::operator==(rhs);
+  }
+  bool near_equals(const Tensor& rhs) const = delete;
+  bool near_equals(const TypedTensor& rhs) const {
+    return Tensor::near_equals(rhs);
+  }
+  TypedTensor clip(Constant mn, Constant mx) const {
+    return Tensor::clip(mn, mx);
+  }
+  
+  // ==========================================
+  // * operations that can return tensor view *
+  TypedTensor reshaped(Shape shape) const {
+    return Tensor::reshaped(shape);
+  }
+  TypedTensor transposed() const {
+    return Tensor::transposed();
+  }
+  TypedTensor axis_extended() const {
+    return Tensor::axis_extended();
+  }
+  // ==========================================
+};
+
+
+#define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
+template<signed_type... Sz> \
+Tensor Backend::zeros_##name(Sz... sz) {\
+  return zeros(DataType(ElementType::enum_name, Shape({sz...})));\
+}\
+template<signed_type... Sz> \
+Tensor Backend::ones_##name(Sz... sz) {\
+  return ones(DataType(ElementType::enum_name, Shape({sz...})));\
+}\
+template<signed_type... Sz> \
+Tensor Backend::uniform_##name(Sz... sz) {\
+  return uniform(DataType(ElementType::enum_name, Shape({sz...})));\
+}
+#include "element_type.inc"
+#undef ELEMENT_TYPE
+
+#define BINOP_NO_CONST(def_name, func_name)\
+Tensor Backend::def_name(const Tensor& lhs, const Tensor& rhs) {\
+  return lhs.def_name(rhs);\
+}
+#define BINOP_NO_CONST_CPP(def_name, func_name) ;
+#define BINOP(def_name, func_name) \
+BINOP_NO_CONST(def_name, func_name) \
+Tensor Backend::def_name(const Tensor& lhs, Constant rhs) {\
+  return lhs.def_name(rhs);\
+}\
+Tensor Backend::def_name(Constant lhs, const Tensor& rhs) {\
+  auto c = constant(rhs.get_element_type(), lhs);\
+  return c.def_name(rhs);\
+}
+#define BINOP_CPP(def_name, func_name) ;
+#define UNIOP(def_name, func_name) \
+Tensor Backend::def_name(const Tensor& val) {\
+  return val.def_name();\
+}
+#define UNIOP_CPP(def_name, func_name) ;
+#define REDUCEOP(def_name, func_name) \
+Tensor Backend::def_name(const Tensor& val, const AxisArray& axis) {\
+  return val.def_name(axis);\
+}
+#define SELFOP_CPP(def_name, func_name, fallback) ;
+#include "operators/operators.inc"
+
+Tensor Backend::zeros(DataType datatype) {
+  TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
+  return make_tensor(allocate(descriptor));
+}
+
+Tensor Backend::ones(DataType datatype) {
+  auto res = zeros(datatype);
+  res.fill(1);
+  return res;
+}
+
+template<typename T>
+Tensor Backend::tensor(const std::vector<T>& data) {
+  Shape shape = Shape({(int64_t)data.size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0;i<shape[0];i++){
+    res.at<T>(i) = data[i];
+  }
+  return res;
+}
+
+template<typename T>
+Tensor Backend::tensor(const std::vector<std::vector<T>>& data) {
+  Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0;i<shape[0];i++){
+    for (int j=0;j<shape[1];j++){
+      res.at<T>(i,j) = data[i][j];
+    }
+  }
+  return res;
+}
+
+template<typename T>
+Tensor Backend::tensor(const std::vector<std::vector<std::vector<T>>>& data) {
+  Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size(), (int64_t)data[0][0].size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0;i<shape[0];i++){
+    for (int j=0;j<shape[1];j++){
+      for (int k=0;k<shape[2];k++){
+        res.at<T>(i,j,k) = data[i][j][k];
+      }
+    }
+  }
+  return res;
+}
+
+Tensor Backend::tensor(DataType datatype, Constant val) {
+  auto res = zeros(datatype);
+  res.fill(val);
+  return res;
+}
+
+Tensor Backend::constant(ElementType element_type, Constant val) {
+  auto res = zeros(DataType(element_type, Shape({1})));
+  res.fill(val);
+  return res;
+}
+
+template<typename T>
+Tensor Backend::constant(T val) {
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), Shape({1})));
+  res.fill(val);
+  return res;
+}
+
+Tensor Backend::uniform(DataType datatype, double mn, double mx) {
+  TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
+  Handle res = allocate(descriptor);
+  call_with_type([&]<typename T>(type_wrapper<T>) {
+    IterUtils::WOffsetView view(get_data(res), descriptor);
+    size_t total = view.shape[-1];
+    auto operation = [](T a, std::pair<double, double> range) {
+      std::uniform_real_distribution<> dist(range.first, range.second);
+      return static_cast<T>(dist(rng));
+    };
+    IterUtils::per_element_self<T, std::pair<double, double>, operation>(view, {mn, mx});
+  }, datatype.get_element_type());
+  return make_tensor(res);
+}
+
+Tensor Backend::normalize(const Tensor& tensor) {
+  return tensor / (tensor * tensor).sum();
+}
+
+template<typename T, signed_type... Sz>
+TypedTensor<T> Backend::zeros(Sz... sz) {
+  TensorDescriptor descriptor(Shape({sz...}), find_element_type(type_wrapper<T>()));
+  return make_tensor(allocate(descriptor));
+}
+
+Tensor Backend::make_tensor(Handle handle) { 
+  return Tensor(*this, handle); 
+}
+
 
 }
 }

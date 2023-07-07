@@ -10,17 +10,3 @@ BINOP_CPP(operator>=, more_eq)
 BINOP_NO_CONST(matmul, matmul)
 BINOP(max, max)
 BINOP(min, min)
-
-UNIOP_CPP(operator-, neg)
-UNIOP(log, log)
-UNIOP(exp, exp)
-UNIOP(diag, diag)
-UNIOP(copy, copy)
-
-REDUCEOP(sum, sum)
-REDUCEOP(mean, mean)
-REDUCEOP(reduce_max, max)
-REDUCEOP(reduce_min, min)
-
-SELFOP_CPP(operator+=, add_assign)
-SELFOP_CPP(operator-=, sub_assign)
