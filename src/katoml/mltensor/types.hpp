@@ -378,11 +378,12 @@ class type_wrapper {
 public:
 };
 
-static inline void call_with_type(auto&& func, ElementType element_type) {
+template<typename Ret>
+static inline Ret call_with_type(auto&& func, ElementType element_type) {
   switch (element_type) {
   #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) \
   case ElementType::enum_name: \
-  func(type_wrapper<tyty>());\
+  return func(type_wrapper<tyty>());\
   break;
   #include "element_type.inc"
   #undef ELEMENT_TYPE

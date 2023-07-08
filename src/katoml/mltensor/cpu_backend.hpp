@@ -42,7 +42,7 @@ public:
     return tensors.find(handle.get_id()) != tensors.end();
   }
   bool binop(BinOpcode opcode, HandleView res, HandleView lhs, HandleView rhs) override {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    return call_with_type<bool>([&]<typename T>(type_wrapper<T>) {
       auto work = [&](auto operation) {
         IterUtils::per_element_bin_op<T, operation>(to_wview(res), to_rview(lhs), to_rview(rhs));
         return true;
@@ -72,10 +72,9 @@ public:
         return matmul(res, lhs, rhs);
       }
     }, get_element_type(res));
-    return true;
   }
   bool uniop(UniOpcode opcode, HandleView res, HandleView val) override {
-     call_with_type([&]<typename T>(type_wrapper<T>) {
+     return call_with_type<bool>([&]<typename T>(type_wrapper<T>) {
       auto work = [&](auto operation) {
         IterUtils::per_element_uni_op<T, operation>(to_wview(res), to_rview(val));
         return true;
@@ -93,7 +92,6 @@ public:
         return diag(res, val);
       }
     }, get_element_type(res));
-    return true;
   }
   bool reduceop(ReduceOpcode opcode, HandleView res, HandleView res_std, HandleView val, const AxisArray& axis) override {
     switch (opcode) {
@@ -109,7 +107,7 @@ public:
     return true;
   }
   bool selfop(SelfOpcode opcode, HandleView res, HandleView rhs) override {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    return call_with_type<bool>([&]<typename T>(type_wrapper<T>) {
       auto work = [&](auto operation) {
         IterUtils::per_element_self_bin_op<T, operation>(to_wview(res), to_rview(rhs));
         return true;
@@ -121,59 +119,58 @@ public:
         return work([](T a, T b) { return a - b; });
       }
     }, get_element_type(res));
-    return true;     
   }
   bool near_equals(bool& res, HandleView lhs, HandleView rhs) override {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return std::abs(a-b) < NEAR_EQUAL_EPS.cast<T>(); };
       res = IterUtils::all<T, operation>(to_rview(lhs), to_rview(rhs));
     }, get_element_type(lhs));
     return true;
   }
   bool equals(bool& res, HandleView lhs, HandleView rhs) override {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return a == b; };
       res = IterUtils::all<T, operation>(to_rview(lhs), to_rview(rhs));
     }, get_element_type(lhs));
     return true;
   }
   bool clip(HandleView res, HandleView val, Constant mn, Constant mx) override {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, std::pair<T,T> lims) { return std::clamp(a, lims.first, lims.second); };
       IterUtils::per_element_uni_op<T, std::pair<T,T>, operation>(to_wview(res), to_rview(val), {mn.cast<T>(), mx.cast<T>()});
     }, get_element_type(res));
     return true;
   }
   bool fill(HandleView res, Constant val) override {
-     call_with_type([&]<typename T>(type_wrapper<T>) {
+     call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T val) { return val; };
       IterUtils::per_element_self<T, T, operation>(to_wview(res), val.cast<T>());
     }, get_element_type(res));
     return true;
   }
   bool matmul(HandleView res, HandleView lhs, HandleView rhs) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       IterUtils::matmul<T>(to_wview(res), to_rview(lhs), to_rview(rhs));
     }, get_element_type(res));
     return true;
   }
   
   bool diag(HandleView res, HandleView val) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a) { return a; };
       IterUtils::per_diag_element_uni_op<T, operation>(to_wview(res), to_rview(val));
     }, get_element_type(res));
     return true;
   }
   bool sum(HandleView res, HandleView res_std, HandleView val) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return a+b; };
       IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val));
     }, get_element_type(res));
     return true;
   }
   bool mean(HandleView res, HandleView res_std,HandleView val, const AxisArray& axis) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return a+b; };
       IterUtils::reduce<T, operation>(to_wview(res_std), to_rview(val));
       const auto div = [](T a, size_t cnt) { return a/cnt; };
@@ -182,7 +179,7 @@ public:
     return true;
   }
   bool reduce_max(HandleView res, HandleView res_std, HandleView val) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto init = [](T) { return std::numeric_limits<T>::min(); };
       IterUtils::per_element_self<T, init>(to_wview(res));
       const auto operation = [](T a, T b) { return std::max(a,b); };
@@ -191,7 +188,7 @@ public:
     return true;
   }
   bool reduce_min(HandleView res, HandleView res_std, HandleView val) {
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto init = [](T) { return std::numeric_limits<T>::max(); };
       IterUtils::per_element_self<T, init>(to_wview(res));
       const auto operation = [](T a, T b) { return std::min(a,b); };

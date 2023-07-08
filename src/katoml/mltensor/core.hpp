@@ -549,23 +549,53 @@ public:
   TensorDescriptor get_descriptor() const { 
     return TensorDescriptor(handle.get_element_type(), handle.get_shape(), handle.get_strides()); 
   }
-  template<typename T, signed_type... Index>
-  T at(Index... index) const {
+  template<signed_type... Index>
+  Constant at(Index... index) const {
     const uint8_t* data = reinterpret_cast<const uint8_t*>(get_data());
-    int i = 0;
-    size_t offset = 0;
-    ((offset += index * handle.get_strides()[i++]), ...);
-    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
-    return *reinterpret_cast<const T*>(data + offset);
+    return call_with_type<Constant>([&]<typename T>(type_wrapper<T>) {
+      return *reinterpret_cast<const T*>(data + calculate_offset(index...));
+    }, get_element_type());
+  }
+  template<signed_type... Index>
+  Constant operator()(Index... index) const {
+    return at(index...);
+  }
+
+  class ConstantSetter {
+  public:
+    ConstantSetter& operator=(Constant constant) {
+      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
+      call_with_type<void>([&]<typename T>(type_wrapper<T>) {
+        *reinterpret_cast<T*>(data + offset) = constant.cast<T>();
+      }, parent.get().get_element_type());
+      return *this;
+    }
+    template<typename T>
+    T& cast() {
+      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
+      return *reinterpret_cast<T*>(data + offset);
+    }
+    friend class Tensor;
+  private:
+    ConstantSetter(Tensor& parent, size_t offset) : parent(parent), offset(offset) {}
+    std::reference_wrapper<Tensor> parent;
+    size_t offset;
+  };
+  template<signed_type... Index>
+  ConstantSetter at(Index... index) {
+    return ConstantSetter(*this, calculate_offset(index...));
+  }
+  template<signed_type... Index>
+  ConstantSetter operator()(Index... index) {
+    return at(index...);
   }
   template<typename T, signed_type... Index>
-  T& at(Index... index) {
-    uint8_t* data = reinterpret_cast<uint8_t*>(get_data());
-    int i = 0;
-    size_t offset = 0;
-    ((offset += index * handle.get_strides()[i++]), ...);
-    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
-    return *reinterpret_cast<T*>(data + offset);
+  T at_typed(Index... index) const {
+    return at(index...).template cast<T>();
+  }
+  template<typename T, signed_type... Index>
+  T& at_typed(Index... index) {
+    return at(index...).template cast<T>();
   }
 
   #define BINOP_NO_CONST(def_name, func_name)\
@@ -656,7 +686,7 @@ public:
 
   friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
     std::ostringstream ss("");
-    call_with_type([&]<typename T>(type_wrapper<T>) {
+    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       IterUtils::ROffsetView rview(tensor.get_data(),tensor.get_descriptor());
       const auto level_in = [&](int level) {
         ss << "[";
@@ -715,6 +745,14 @@ protected:
     if (other.is_view)
       CHECK_OR_THROW(backend.get().is_alive(other.handle), UseAfterFreeError)
   }
+  template<signed_type... Index>
+  size_t calculate_offset(Index... index) const {
+    int i = 0;
+    size_t offset = 0;
+    ((offset += index * handle.get_strides()[i++]), ...);
+    ASSERT(i == get_ndims(), "tensor at index not matching dimension");
+    return offset;
+  }
   std::reference_wrapper<Backend> backend;
   bool is_view;
   Backend::Handle handle;
@@ -740,12 +778,24 @@ public:
     Tensor::operator=(std::move(other));
     return *this;
   }
-  template<typename F, signed_type... Index> F at(Index... index) const = delete;
-  template<typename F, signed_type... Index> F& at(Index... index) = delete;
   template<signed_type... Index>
-  T operator()(Index... index) const { return Tensor::at<T>(index...); }
+  Constant at(Index... index) const = delete;
   template<signed_type... Index>
-  T& operator()(Index...index) { return Tensor::at<T>(index...); }
+  ConstantSetter at(Index...index) = delete;
+  template<typename F, signed_type... Index>
+  F at_typed(Index... index) const = delete;
+  template<typename F, signed_type... Index>
+  F& at_typed(Index... index) = delete;
+
+  template<signed_type... Index>
+  T at(Index... index) const { return Tensor::at(index...).template cast<T>(); }
+  template<signed_type... Index>
+  T& at(Index...index) { return Tensor::at(index...).template cast<T>(); }
+  // FIXME
+  // template<signed_type... Index>
+  // T operator()(Index... index) const { return Tensor::at(index...).template cast<T>(); }
+  // template<signed_type... Index>
+  // T& operator()(Index...index) { return Tensor::at(index...).template cast<T>(); }
 
   #define BINOP_NO_CONST(def_name, func_name)\
   Tensor def_name(const Tensor& rhs) const = delete;\
@@ -961,7 +1011,7 @@ Tensor Backend::constant(T val) {
 Tensor Backend::uniform(DataType datatype, double mn, double mx) {
   TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
   Handle res = allocate(descriptor);
-  call_with_type([&]<typename T>(type_wrapper<T>) {
+  call_with_type<void>([&]<typename T>(type_wrapper<T>) {
     IterUtils::WOffsetView view(get_data(res), descriptor);
     auto operation = [](T a, std::pair<double, double> range) {
       std::uniform_real_distribution<> dist(range.first, range.second);
@@ -975,7 +1025,7 @@ Tensor Backend::uniform(DataType datatype, double mn, double mx) {
 Tensor Backend::rand_normal(DataType datatype, double mean, double std) {
   TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
   Handle res = allocate(descriptor);
-  call_with_type([&]<typename T>(type_wrapper<T>) {
+  call_with_type<void>([&]<typename T>(type_wrapper<T>) {
     IterUtils::WOffsetView view(get_data(res), descriptor);
     auto operation = [](T a, std::pair<double, double> range) {
       std::normal_distribution<> dist(range.first, range.second);

@@ -244,7 +244,7 @@ TEST_CASE("[mltensor] Use freed tensor") {
 
 TEST_CASE("[mltensor] Reduce sum is working") {
   auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
-  REQUIRE(A.sum().at<int>(0) == 18);
+  REQUIRE(A.sum().at(0).cast<int>() == 18);
   REQUIRE(A.sum({0}) == backend->tensor<int>({5,6,7}));
   REQUIRE(A.sum({1}) == backend->tensor<int>({6,6,6}));
   REQUIRE(A.sum({-2}) == backend->tensor<int>({5,6,7}));
@@ -269,4 +269,52 @@ TEST_CASE("[mltensor] Reduce mean is working") {
   REQUIRE(B.mean({1}) == backend->tensor<float>({2,5,8}));
   REQUIRE(B.mean({-2}) == backend->tensor<float>({4,5,6}));
   REQUIRE(B.mean({-1}) == backend->tensor<float>({2,5,8}));
+}
+
+TEST_CASE("[mltensor] at is working") {
+  auto A = backend->tensor<int>({{3,3,3}});
+  REQUIRE(A.at(0,0).cast<int>() == 3);
+  REQUIRE(A.at(0,1).cast<int>() == 3);
+  REQUIRE(A.at(0,2).cast<int>() == 3);
+  for (int i=0;i<1000;i++){
+    REQUIRE(A.at(0,2).cast<int>() == 3+i);
+    A.at(0,2).cast<int>() += 1;
+  }
+}
+
+TEST_CASE("[mltensor] index is working") {
+  auto A = backend->tensor<int>({{3,3,3}});
+  REQUIRE(A(0,0).cast<int>() == 3);
+  REQUIRE(A(0,1).cast<int>() == 3);
+  REQUIRE(A(0,2).cast<int>() == 3);
+  for (int i=0;i<1000;i++){
+    REQUIRE(A(0,2).cast<int>() == 3+i);
+    A(0,2).cast<int>() += 1;
+  }
+}
+
+TEST_CASE("[mltensor] at_typed is working") {
+  auto A = backend->tensor<int>({{1,2,(int)1e9}});
+
+  REQUIRE(A.at_typed<int>(0,0) == 1);
+  REQUIRE(A.at_typed<int>(0,1) == 2);
+  REQUIRE(A.at_typed<int>(0,2) == (int)1e9);
+  for (int i=0;i<1000;i++){
+    REQUIRE(A.at_typed<int>(0,2) == (int)1e9+i);
+    A.at_typed<int>(0,2) += 1;
+  }
+}
+
+TEST_CASE("[mltensor] index arbitrary constant is working") {
+  auto A = backend->tensor<int>({{1,2,(int)1e9}});
+
+  A(0,0) = 0;
+
+  REQUIRE(A(0,0).cast<int>() == 0);
+  REQUIRE(A(0,1).cast<int>() == 2);
+  REQUIRE(A(0,2).cast<int>() == (int)1e9);
+
+  auto B = backend->tensor<float>({0.0f});
+  B(0) = 1.5f;
+  REQUIRE(B(0).cast<float>() == 1.5f);
 }
