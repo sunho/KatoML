@@ -4,6 +4,7 @@
 #include "katoml/mltensor/core.hpp"
 #include "katoml/mltensor/types.hpp"
 #include <functional>
+#include <initializer_list>
 
 namespace katoml {
 namespace compiler {
@@ -150,18 +151,33 @@ public:
   #undef ELEMENT_TYPE
 
   template<typename T>
-  Node tensor(const std::vector<T>& data) {
-    return Node(*this, backend().template tensor<T>(data));
+  Node tensor(std::initializer_list<T> data) {
+    return Node(*this, backend().tensor<T>(data));
   }
 
   template<typename T>
-  Node tensor(const std::vector<std::vector<T>>& data) {
-    return Node(*this, backend().template tensor<T>(data));
+  Node tensor(std::initializer_list<std::initializer_list<T>> data) {
+    return Node(*this, backend().tensor<T>(data));
   }
 
   template<typename T>
-  Node tensor(const std::vector<std::vector<std::vector<T>>>& data) {
-    return Node(*this, backend().template tensor<T>(data));
+  Node tensor(std::initializer_list<std::initializer_list<std::initializer_list<T>>> data) {
+    return Node(*this, backend().tensor<T>(data));
+  }
+
+  template<typename T>
+  Node from_vector(const std::vector<T>& data) {
+    return Node(*this, backend().from_vector<T>(data));
+  }
+
+  template<typename T>
+  Node from_vector(const std::vector<std::vector<T>>& data) {
+    return Node(*this, backend().from_vector<T>(data));
+  }
+
+  template<typename T>
+  Node from_vector(const std::vector<std::vector<std::vector<T>>>& data) {
+    return Node(*this, backend().from_vector<T>(data));
   }
 
   Node constant(Tensor&& tensor) {return Node(*this, std::move(tensor)); }

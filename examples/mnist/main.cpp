@@ -26,7 +26,7 @@ std::tuple<Tensor, Tensor, std::vector<int>> pick_data(MNistLoader& loader, size
     y.push_back(ans);
     labels.push_back(loader.labels(id));
   }
-  return {backend.tensor(X), backend.tensor(y), labels};
+  return {backend.from_vector(X), backend.from_vector(y), labels};
 }
 
 struct MNistDigitNetwork {

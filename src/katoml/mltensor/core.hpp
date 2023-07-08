@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <initializer_list>
 #include <optional>
 #include <random>
 #include <iostream>
@@ -318,11 +319,17 @@ public:
   inline Tensor zeros(DataType datatype);
   inline Tensor ones(DataType datatype);
   template<typename T>
-  inline Tensor tensor(const std::vector<T>& data);
+  inline Tensor tensor(std::initializer_list<T> data);
   template<typename T>
-  inline Tensor tensor(const std::vector<std::vector<T>>& data);
+  inline Tensor tensor(std::initializer_list<std::initializer_list<T>> data);
   template<typename T>
-  inline Tensor tensor(const std::vector<std::vector<std::vector<T>>>& data);
+  inline Tensor tensor(std::initializer_list<std::initializer_list<std::initializer_list<T>>> data);
+  template<typename T>
+  inline Tensor from_vector(const std::vector<T>& data);
+  template<typename T>
+  inline Tensor from_vector(const std::vector<std::vector<T>>& data);
+  template<typename T>
+  inline Tensor from_vector(const std::vector<std::vector<std::vector<T>>>& data);
   inline Tensor tensor(DataType datatype, Constant val);
   inline Tensor constant(ElementType element_type, Constant val);
   template<typename T>
@@ -850,7 +857,49 @@ Tensor Backend::ones(DataType datatype) {
 }
 
 template<typename T>
-Tensor Backend::tensor(const std::vector<T>& data) {
+Tensor Backend::tensor(std::initializer_list<T> data) {
+  Shape shape = Shape({(int64_t)data.size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0; auto x : data){
+    res.at<T>(i) = x;
+    i++;
+  }
+  return res;
+}
+
+template<typename T>
+Tensor Backend::tensor(std::initializer_list<std::initializer_list<T>> data) {
+  Shape shape = Shape({(int64_t)data.size(), (int64_t)data.begin()->size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0; auto& arr0 : data){
+    for (int j=0; auto x : arr0){
+      res.at<T>(i,j) = x;
+      j++;
+    }
+    i++;
+  }
+  return res;
+}
+
+template<typename T>
+Tensor Backend::tensor(std::initializer_list<std::initializer_list<std::initializer_list<T>>> data) {
+  Shape shape = Shape({(int64_t)data.size(), (int64_t)data.begin()->size(), (int64_t)data.begin()->begin()->size()});
+  auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
+  for (int i=0; auto& arr0 : data){
+    for (int j=0; auto& arr1 : arr0){
+      for (int k=0; auto x : arr1){
+        res.at<T>(i,j,k) = x;
+        k++;
+      }
+      j++;
+    }
+    i++;
+  }
+  return res;
+}
+
+template<typename T>
+Tensor Backend::from_vector(const std::vector<T>& data) {
   Shape shape = Shape({(int64_t)data.size()});
   auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
   for (int i=0;i<shape[0];i++){
@@ -860,7 +909,7 @@ Tensor Backend::tensor(const std::vector<T>& data) {
 }
 
 template<typename T>
-Tensor Backend::tensor(const std::vector<std::vector<T>>& data) {
+Tensor Backend::from_vector(const std::vector<std::vector<T>>& data) {
   Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size()});
   auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
   for (int i=0;i<shape[0];i++){
@@ -872,7 +921,7 @@ Tensor Backend::tensor(const std::vector<std::vector<T>>& data) {
 }
 
 template<typename T>
-Tensor Backend::tensor(const std::vector<std::vector<std::vector<T>>>& data) {
+Tensor Backend::from_vector(const std::vector<std::vector<std::vector<T>>>& data) {
   Shape shape = Shape({(int64_t)data.size(), (int64_t)data[0].size(), (int64_t)data[0][0].size()});
   auto res = zeros(DataType(find_element_type(type_wrapper<T>()), shape));
   for (int i=0;i<shape[0];i++){

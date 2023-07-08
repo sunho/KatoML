@@ -172,12 +172,12 @@ TEST_CASE("[mltensor] Matmul is computed") {
   auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   auto B = backend->tensor<int>({{4,5,6},{6,5,4},{4,6,5}});
   std::vector<std::vector<int>> ans = {{28,33,29},{28,31,31},{28,33,29}};
-  REQUIRE(A.matmul(B) == backend->tensor<int>(ans));
+  REQUIRE(A.matmul(B) == backend->from_vector<int>(ans));
 
   std::vector<std::vector<std::vector<int>>> ans_mul;
   for (int i=0;i<3;i++) ans_mul.push_back(ans);
   auto A_mul = A * backend->ones_i32(3,3,3);
-  REQUIRE(A_mul.matmul(B) == backend->tensor<int>(ans_mul));
+  REQUIRE(A_mul.matmul(B) == backend->from_vector<int>(ans_mul));
 }
 
 TEST_CASE("[mltensor] Reshape is working") {
