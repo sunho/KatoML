@@ -13,7 +13,6 @@ jobs:
       run:
         shell: bash -l {0}
 
-
     steps:
     - uses: actions/checkout@v2
       with:
@@ -45,4 +44,4 @@ jobs:
         python -m venv foo
         source foo/bin/activate
         pip install --upgrade pip setuptools cpp-coveralls
-        coveralls -E ".*CMakeFiles.*" -E ".*tests/.*.cpp.*" --exclude "build/external"
+        coveralls -E ".*CMakeFiles.*" -E ".*tests/.*.cpp.*" --exclude "foo" --exclude "build/external"
