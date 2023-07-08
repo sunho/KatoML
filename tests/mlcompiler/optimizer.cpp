@@ -1,9 +1,11 @@
 #include "katoml/mlcompiler/ir/pass/optimizer.hpp"
 #include "katoml/mltensor/core.hpp"
+#include "katoml/mlsupport/mlsupport.hpp"
 #include "katoml/mltensor/cpu_backend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <katoml/mlcompiler/mlcompiler.hpp>
 
+using namespace katoml;
 using namespace katoml::compiler;
 using namespace katoml::tensor;
 

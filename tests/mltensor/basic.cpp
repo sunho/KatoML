@@ -1,8 +1,8 @@
 #include "katoml/mltensor/core.hpp"
-#include "katoml/mltensor/errors.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <katoml/mltensor/mltensor.hpp>
 
+using namespace katoml;
 using namespace katoml::tensor;
 
 auto backend = construct_cpu_backend();

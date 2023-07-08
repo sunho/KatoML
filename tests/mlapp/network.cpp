@@ -75,7 +75,7 @@ TEST_CASE("[mlapp] Simple linear model") {
     inputs.set("input", data.copy());
     losses.push_back(model->optimize(std::move(inputs), label.copy()));
   }
-  // FIXME: tensorflow is slightly (by 1e-5) better like a constant bias. Could this be just floating point error?
+  // FIXME: tensorflow is slightly (by 1e-5) better by like a constant bias. Could this be really just floating point error?
   std::vector<double> ans = {56.484100000000005, 22.527244170948226, 9.840964244481372, 5.084582271033033};
   for (int i=0;i<4;i++){
     REQUIRE(losses[i] == Catch::Approx(ans[i]));
