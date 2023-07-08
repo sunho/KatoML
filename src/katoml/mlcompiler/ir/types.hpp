@@ -11,6 +11,14 @@ enum class Opcode {
 };
 #undef DECL_NODE
 
+static inline std::string opcode_to_string(Opcode opcode) {
+  switch(opcode) {
+#define DECL_NODE(name, ...) case Opcode::name: return #name;
+#include "ir.inc"
+#undef DECL_NODE
+  }
+}
+
 class Node;
 
 using DataType = tensor::DataType;

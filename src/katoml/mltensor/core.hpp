@@ -762,10 +762,10 @@ class TypedTensor : public Tensor {
 public:
   TypedTensor() = default;
   TypedTensor(Tensor&& other) : Tensor(std::move(other)) {
-    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
+    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), InvalidTypedError)
   }
   TypedTensor(TypedTensor&& other) : Tensor(std::move(other)) {
-    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), TensorTypeError)
+    CHECK_OR_THROW(find_element_type(type_wrapper<T>()) == this->get_element_type(), InvalidTypedError)
   }
   TypedTensor(const TypedTensor& other) = delete;
   TypedTensor& operator=(const TypedTensor& other) = delete;

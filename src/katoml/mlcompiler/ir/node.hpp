@@ -14,7 +14,7 @@ public:
   Node() = default;
   Node(Opcode opcode, DataType datatype, const std::initializer_list<Value>& values) : 
     id(next_id++), opcode(opcode), datatype(datatype), num_args(values.size()) {
-    assert(values.size() <= MAX_NODE_ARGUMENTS);
+    ASSERT(values.size() <= MAX_NODE_ARGUMENTS, "max node arguments exceeded");
     std::copy(values.begin(), values.end(), args.begin());
   }
   uint64_t get_id() const { return id; }
@@ -31,6 +31,13 @@ private:
   size_t num_args;
   static std::atomic<uint64_t> next_id;
 };
+
+DataType Value::get_datatype() const { 
+  ASSERT(is_tensor(), "tried to get datatype of non-tensor value");
+  if (is_node()) { return as_node()->get_datatype(); }
+  if (is_var()) { return as_var()->get_datatype(); }
+  return as_tensor()->get_datatype();
+}
 
 }
 }

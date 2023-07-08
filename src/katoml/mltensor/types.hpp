@@ -388,7 +388,7 @@ static inline Ret call_with_type(auto&& func, ElementType element_type) {
   #include "element_type.inc"
   #undef ELEMENT_TYPE
   case ElementType::None:
-    assert(false);
+    ASSERT(false, "none element type used");
     break;
   }
 }

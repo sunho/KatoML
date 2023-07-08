@@ -16,8 +16,10 @@ public:
 #undef DECL_NODE
 static Value build_binary(ir::Opcode opcode,ir::Value lhs,ir::Value rhs) {
   DataType ldatatype = lhs.get_datatype(), rdatatype = rhs.get_datatype();
-  assert(ldatatype.get_element_type() == rdatatype.get_element_type());
-  assert(tensor::can_broadcast_shape(ldatatype.get_shape(), rdatatype.get_shape()));
+  TYPE_CHECK_OR_THROW(
+    tensor::can_broadcast_shape(lhs.get_shape(), rhs.get_shape()) && 
+    lhs.get_element_type() == rhs.get_element_type(), 
+    opcode_to_string(opcode), ldatatype, rdatatype);
   tensor::Shape res_shape = calculate_broadcast_shape(ldatatype.get_shape(), rdatatype.get_shape());
   return NodePtr(new Node(opcode, DataType(ldatatype.get_element_type(), res_shape), {lhs, rhs}));
 }
@@ -31,13 +33,6 @@ static Value build_reduce_same_type(ir::Opcode opcode,ir::Value val, ir::IntList
   return NodePtr(new Node(opcode, DataType(datatype.get_element_type(), res_shape), {val, axis}));
 }
 };
-
-DataType Value::get_datatype() const { 
-  assert(is_tensor());
-  if (is_node()) { return as_node()->get_datatype(); }
-  if (is_var()) { return as_var()->get_datatype(); }
-  return as_tensor()->get_datatype();
-}
 
 Value Builder::Add(ir::Value lhs,ir::Value rhs) {
   return build_binary(Opcode::Add, lhs, rhs);

@@ -1,5 +1,6 @@
 #pragma once
 #include "katoml/mlcompiler/tensor.hpp"
+#include "katoml/mltensor/types.hpp"
 #include "types.hpp"
 #include "var.hpp"
 
@@ -31,6 +32,8 @@ public:
     type(ValueType::Var), impl(var) {}
   ValueType get_type() const { return type; }
   inline DataType get_datatype() const;
+  tensor::Shape get_shape() const { return get_datatype().get_shape(); }
+  tensor::ElementType get_element_type() const { return get_datatype().get_element_type(); }
   bool is_tensor() const { return type == ValueType::Tensor || is_node() || is_var(); }
   bool is_var() const { return type == ValueType::Var; }
   bool is_node() const { return type == ValueType::Node; }
@@ -66,7 +69,7 @@ public:
   TypedValue() = delete;
   TypedValue(const T& value) : Value(value) {}
   TypedValue(const Value& value) : Value(value) {
-    assert(value.get_type() == VT);
+    CHECK_OR_THROW(value.get_type() == VT, InvalidTypedError);
   }
 };
 
