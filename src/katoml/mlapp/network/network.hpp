@@ -359,6 +359,7 @@ static inline ModelPtr finalize(LayerPtr final, LossFunc loss = nullptr, Optimiz
   std::vector<compiler::Var> params_vec;
   const auto dfs = [&](auto&& self, Layer& cur) -> void {
     if (visited.count(&cur)) { return; }
+    visited.insert(&cur);
     if (cur.get_type() == LayerType::Input) {
       assert(!inputs.count(cur.get_input_name()) && "duplicate input name");
       inputs.emplace(cur.get_input_name(), cur.get_input_placeholder());
