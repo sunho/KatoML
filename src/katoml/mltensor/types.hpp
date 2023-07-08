@@ -3,6 +3,8 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <variant>
+#include <atomic>
 #include <type_traits>
 #include <vector>
 #include <array>
