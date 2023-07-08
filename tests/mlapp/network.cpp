@@ -45,15 +45,11 @@ TEST_CASE("[mlapp] Basic use case") {
   // auto model = network::finialize(ctx, x);
 
   {
-    network::Model::InputsMap inputs;
-    inputs.emplace("input", device->backend().zeros_f32(1,10));
-    model->run(std::move(inputs));
+    model->run(network::IM().set("input", device->backend().zeros_f32(1,10)).move());
   }
 
   {
-    network::Model::InputsMap inputs;
-    inputs.emplace("input", device->backend().zeros_f32(1,10));
-    model->optimize(std::move(inputs), device->backend().zeros_f32(10));
+    model->optimize(network::IM().set("input", device->backend().zeros_f32(1,10)).move(), device->backend().zeros_f32(10));
   }
 }
 
@@ -74,8 +70,8 @@ TEST_CASE("[mlapp] Simple linear model") {
   auto label = device->backend().tensor<double>({{7.71},{11.61},{14.21}});
   std::vector<double> losses;
   for (int i=0;i<4;i++) {
-    network::Model::InputsMap inputs;
-    inputs.emplace("input", data.copy());
+    auto inputs = network::IM(); 
+    inputs.set("input", data.copy());
     losses.push_back(model->optimize(std::move(inputs), label.copy()));
   }
   // FIXME: tensorflow is slightly (by 1e-5) better like a constant bias. Could this be just floating point error?

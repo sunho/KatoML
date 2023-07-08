@@ -1,4 +1,5 @@
 #include "../common.hpp"
+#include "katoml/mlapp/network/network.hpp"
 
 const int default_batch_size = 128;
 const float learing_rate = 0.1;
@@ -24,9 +25,9 @@ int main() {
 
   for (int i=0;i<10000;i++){
     auto [images, labels, _] = pick_mnist_data(data_loader, backend, default_batch_size);
-    double loss = model->optimize({{"input", std::move(images)}}, std::move(labels));
+    double loss = model->optimize(network::InputsMap().set("input", std::move(images)).move(), std::move(labels));
     auto [images2, __, labels2] = pick_mnist_data(data_loader, backend, default_batch_size);
-    auto predicted = predcited_to_label(model->run({{"input", std::move(images2)}}));
+    auto predicted = predcited_to_label(model->run(network::IM().set("input", std::move(images)).move()));
     std::cout << "accuracy: " << match_percent(predicted, labels2) << "\n";
   }
 }

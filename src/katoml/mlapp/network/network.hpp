@@ -297,10 +297,36 @@ namespace optimizer {
   }
 }
 
+class InputsMap {
+public:
+  InputsMap() = default;
+  InputsMap(const InputsMap& other) = delete;
+  InputsMap& operator=(const InputsMap& other) = delete;
+  InputsMap(InputsMap&& other) = default;
+  InputsMap& operator=(InputsMap&& other) = default;
+  InputsMap& set(const std::string& name, tensor::Tensor&& tensor) {
+    inner.emplace(name, std::move(tensor));
+    return *this;
+  }
+  InputsMap&& move() {
+    return std::move(*this);
+  }
+  friend class Model;
+private:
+  std::map<std::string, tensor::Tensor>& get_inner() {
+    return inner;
+  }
+  const std::map<std::string, tensor::Tensor>& get_inner() const {
+    return inner;
+  }
+  std::map<std::string, tensor::Tensor> inner;
+};
+
+using IM = InputsMap;
+
 class Model {
 public:
   using InputDefsMap = std::map<std::string,  compiler::PlaceHolder>;
-  using InputsMap = std::map<std::string, tensor::Tensor>;
   Model(compiler::Device& device, const InputDefsMap& input_defs, const ParamsVector& params_vec, LayerPtr output, LossFunc loss, OptimizerPtr&& optimizer) :
     device(device), input_defs(input_defs), params_vec(params_vec), output(output), 
       loss(loss), optimizer(std::move(optimizer)), 
@@ -310,7 +336,7 @@ public:
 
   tensor::Tensor run(InputsMap&& inputs) {
     verify_inputs(inputs);
-    for (auto& [name, tensor] : inputs) {
+    for (auto& [name, tensor] : inputs.get_inner()) {
       input_defs.at(name).set_tensor(std::move(tensor));
     }
     auto program = device.compile(output->out());
@@ -320,7 +346,7 @@ public:
   double optimize(InputsMap&& inputs, tensor::Tensor&& label) {
     verify_inputs(inputs);
     label_placeholder.set_tensor(std::move(label));
-    for (auto& [name, tensor] : inputs) {
+    for (auto& [name, tensor] : inputs.get_inner()) {
       input_defs.at(name).set_tensor(std::move(tensor));
     }
     auto program = device.compile(loss_value);
@@ -348,10 +374,10 @@ public:
   }
 private:
   void verify_inputs(const InputsMap& inputs) {
-     assert(std::all_of(inputs.begin(), inputs.end(), [&](auto& it) -> bool {
+     assert(std::all_of(inputs.get_inner().begin(), inputs.get_inner().end(), [&](auto& it) -> bool {
       return input_defs.count(it.first);
     }) && "invalid input given");
-    assert(inputs.size() == input_defs.size() && "not all input given");
+    assert(inputs.get_inner().size() == input_defs.size() && "not all input given");
   }
 
   void setup_loss() {
