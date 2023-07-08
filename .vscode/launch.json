@@ -8,7 +8,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Debug",
-      "program": "${workspaceFolder}/build/tests/mlcompiler/mlcompiler_tests",
+      "program": "${workspaceFolder}/build/tests/mlapp/mlapp_tests",
       "args": [],
       "cwd": "${workspaceFolder}"
     }

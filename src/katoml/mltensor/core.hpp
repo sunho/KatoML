@@ -328,6 +328,7 @@ public:
   template<typename T>
   inline Tensor constant(T val);
   inline Tensor uniform(DataType datatype, double mn=0.0, double mx=1.0);
+  inline Tensor rand_normal(DataType datatype, double mean=0.0, double std=1.0);
   inline Tensor normalize(const Tensor& tensor);
   template<typename T, signed_type... Sz>
   inline TypedTensor<T> zeros(Sz... sz);
@@ -903,17 +904,31 @@ Tensor Backend::constant(T val) {
   return res;
 }
 
+// FIXME: maybe let backend do this?
 Tensor Backend::uniform(DataType datatype, double mn, double mx) {
   TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
   Handle res = allocate(descriptor);
   call_with_type([&]<typename T>(type_wrapper<T>) {
     IterUtils::WOffsetView view(get_data(res), descriptor);
-    size_t total = view.shape[-1];
     auto operation = [](T a, std::pair<double, double> range) {
       std::uniform_real_distribution<> dist(range.first, range.second);
       return static_cast<T>(dist(rng));
     };
     IterUtils::per_element_self<T, std::pair<double, double>, operation>(view, {mn, mx});
+  }, datatype.get_element_type());
+  return make_tensor(res);
+}
+
+Tensor Backend::rand_normal(DataType datatype, double mean, double std) {
+  TensorDescriptor descriptor(datatype.get_shape(), datatype.get_element_type());
+  Handle res = allocate(descriptor);
+  call_with_type([&]<typename T>(type_wrapper<T>) {
+    IterUtils::WOffsetView view(get_data(res), descriptor);
+    auto operation = [](T a, std::pair<double, double> range) {
+      std::normal_distribution<> dist(range.first, range.second);
+      return static_cast<T>(dist(rng));
+    };
+    IterUtils::per_element_self<T, std::pair<double, double>, operation>(view, {mean, std});
   }, datatype.get_element_type());
   return make_tensor(res);
 }

@@ -66,6 +66,17 @@ TEST_CASE( "Mat mul backwards", "[cpu]" ) {
   REQUIRE(B.get_grad() == device->backend().tensor<float>({{12,12,12},{15,15,15},{18,18,18}}));
 }
 
+TEST_CASE( "Opertaions with constant is computed", "[cpu]" ) {
+  auto A = device->tensor<int>({1,2,3});
+  REQUIRE(evaluate(10 * A) == device->backend().tensor<int>({10,20,30}));
+  REQUIRE(evaluate(A * 10) == device->backend().tensor<int>({10,20,30}));
+  REQUIRE(evaluate(A + 10) == device->backend().tensor<int>({11,12,13}));
+  REQUIRE(evaluate(A.max(2)) == device->backend().tensor<int>({2,2,3}));
+  REQUIRE(evaluate(device->max(A, 2)) == device->backend().tensor<int>({2,2,3}));
+  REQUIRE(evaluate(device->max(2, A)) == device->backend().tensor<int>({2,2,3}));
+  REQUIRE(evaluate(device->max(A, A)) == device->backend().tensor<int>({1,2,3}));
+}
+
 TEST_CASE( "Log softmax sum backwards", "[cpu]" ) {
   NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));

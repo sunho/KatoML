@@ -25,7 +25,11 @@ inline std::ostream& operator<<(std::ostream& os, const Node& node) {
 
 inline std::ostream& operator<<(std::ostream& os, const Var& var) {
   os << "Var(";
-  os << var.get_tensor();
+  if (var.has_tensor()) {
+    os << var.get_tensor();
+  } else {
+    os << "null";
+  }
   os << ")";
   return os;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "katoml/mltensor/types.hpp"
 #include "types.hpp"
 #include "value.hpp"
 

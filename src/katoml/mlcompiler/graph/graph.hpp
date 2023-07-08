@@ -3,6 +3,7 @@
 #include "../ir/ir.hpp"
 #include "katoml/mltensor/core.hpp"
 #include "katoml/mltensor/types.hpp"
+#include <functional>
 
 namespace katoml {
 namespace compiler {
@@ -22,67 +23,70 @@ static inline std::vector<int> unwrap_axis(const std::vector<int>& axis, ir::Val
 
 class Node final {
 public:
+  Node() = default;
   Node(GraphDevice& device, ir::Value value) : 
-    device(device), value(value) {}
+    device(&device), value(value) {}
   Node(GraphDevice& device, Tensor&& tensor) :
-    device(device), value(std::make_shared<Tensor>(std::move(tensor))) {}
+    device(&device), value(std::make_shared<Tensor>(std::move(tensor))) {}
+  inline Node(GraphDevice& device, tensor::ElementType element_type, tensor::Constant val);
   Node(const Node& other) = default;
   Node& operator=(const Node& rhs) = default;
-  friend Node operator+(Node lhs, Node rhs) {
-    return Node(lhs.device, ir::Builder::Add(lhs.value, rhs.value));
+
+  #define BINOP_CPP(def_name, op_name) \
+  friend Node def_name(Node lhs, Node rhs) { \
+    return Node(*lhs.device, ir::Builder::op_name(lhs.value, rhs.value)); \
+  }\
+  friend Node def_name(tensor::Constant lhs, Node rhs) { \
+    return Node(*rhs.device, ir::Builder::op_name(Node(*rhs.device, rhs.get_element_type(), lhs).get_value(), rhs.value)); \
+  }\
+  friend Node def_name(Node lhs, tensor::Constant rhs) { \
+    return Node(*lhs.device, ir::Builder::op_name(lhs.value, Node(*lhs.device, lhs.get_element_type(), rhs).get_value())); \
   }
-  friend Node operator-(Node lhs, Node rhs) {
-    return Node(lhs.device, ir::Builder::Sub(lhs.value, rhs.value));
+
+  #define BINOP(def_name, op_name) \
+  Node def_name(Node rhs) {\
+    return Node(*device, ir::Builder::op_name(value, rhs.value));\
+  }\
+  Node def_name(tensor::Constant rhs) {\
+    return Node(*device, ir::Builder::op_name(value, Node(*device, get_element_type(), rhs).get_value()));\
   }
-  friend Node operator*(Node lhs, Node rhs) {
-    return Node(lhs.device, ir::Builder::Mul(lhs.value, rhs.value));
+
+  #define UNIOP(def_name, op_name) \
+  Node def_name() {\
+    return Node(*device, ir::Builder::op_name(value));\
   }
-  friend Node operator/(Node lhs, Node rhs) {
-    return Node(lhs.device, ir::Builder::Div(lhs.value, rhs.value));
+
+  #define REDUCEOP(def_name, op_name) \
+  Node def_name(const std::vector<int>& axis = tensor::AllAxis) {\
+    return Node(*device, ir::Builder::op_name(value, ir::IntListValue(unwrap_axis(axis, value))));\
   }
-  Node max(Node rhs) {
-    return Node(device, ir::Builder::Max(value, rhs.value));
-  }
-  Node min(Node rhs) {
-    return Node(device, ir::Builder::Min(value, rhs.value));
-  }
+
+  #include "operators.inc"
+
   Node operator-() {
-    return Node(device, ir::Builder::Neg(value));
+    return Node(*device, ir::Builder::Neg(value));
   }
-  Node matmul(Node val) const {
-    return Node(device, ir::Builder::MatMul(value, val.value));
-  }
-  Node log() const {
-    return Node(device, ir::Builder::Log(value));
-  }
-  Node sum(const std::vector<int>& axis = tensor::AllAxis) {
-    return Node(device, ir::Builder::ReduceSum(value, ir::IntListValue(unwrap_axis(axis, value))));
-  }
-  Node mean(const std::vector<int>& axis = tensor::AllAxis) {
-    return Node(device, ir::Builder::ReduceMean(value, ir::IntListValue(unwrap_axis(axis, value))));
-  }
-  Node softmax() const {
-    return Node(device, ir::Builder::SoftMax(value));
-  }
-  Node log_softmax() const {
-    return Node(device, ir::Builder::LogSoftMax(value));
-  }
+
   friend std::ostream& operator<<(std::ostream& os, const Node& node) {
     return os << node.value;
   }
   ir::Value get_value() const { return value; }
+  tensor::DataType get_datatype() const { return value.get_datatype(); }
+  tensor::ElementType get_element_type() const { return value.get_datatype().get_element_type(); }
+  tensor::Shape get_shape() const { return value.get_datatype().get_shape(); }
 private:
-  std::reference_wrapper<GraphDevice> device;
+  GraphDevice* device { nullptr };
   ir::Value value;
 };
 
 class Var final {
 public:
+  Var() = default;
   Var(GraphDevice& device, Tensor&& tensor, bool nograd=false) : 
-    device(device), var(ir::Var::create(std::move(tensor), nograd)) { }
+    device(&device), var(ir::Var::create(std::move(tensor), nograd)) { }
 
   operator Node() {
-    return Node(device, ir::Value(var));
+    return Node(*device, ir::Value(var));
   }
 
   void set_tensor(Tensor&& tensor) {
@@ -97,17 +101,18 @@ public:
     return var->get_grad();
   }
 private:
-  GraphDevice& device;
+  GraphDevice* device{nullptr};
   ir::VarPtr var;
 };
 
 class PlaceHolder final {
 public:
+  PlaceHolder() = default;
   PlaceHolder(GraphDevice& device, tensor::DataType datatype) : 
-    device(device), var(ir::Var::create(datatype, true)) { }
-  
+    device(&device), var(ir::Var::create(datatype, true)) { }
+
   operator Node() {
-    return Node(device, ir::Value(var));
+    return Node(*device, ir::Value(var));
   }
   void set_tensor(Tensor&& tensor) {
     var->set_tensor(std::move(tensor));
@@ -116,7 +121,7 @@ public:
     return var->get_tensor();
   }
 private:
-  GraphDevice& device;
+  GraphDevice* device { nullptr };
   ir::VarPtr var;
 };
 
@@ -160,17 +165,34 @@ public:
   }
 
   Node constant(Tensor&& tensor) {return Node(*this, std::move(tensor)); }
+  Node constant(tensor::ElementType element_type, tensor::Constant val) { return Node(*this, backend().constant(element_type, val)); }
   Var var(Tensor&& tensor) {return Var(*this, std::move(tensor)); }
   PlaceHolder placeholder(tensor::DataType datatype) {return PlaceHolder(*this, datatype); }
-  
-  Node max(Node a, Node b) { return a.max(b); }
-  Node min(Node a, Node b) { return a.min(b); }
-  Node matmul(Node a, Node b) { return a.matmul(b); }
-  Node log(Node a) { return a.log(); }
-  Node softmax(Node a) { return a.softmax(); }
-  Node log_softmax(Node a) { return a.log_softmax(); }
-  Node sum(Node a, const std::vector<int>& axis = tensor::AllAxis) { return a.sum(axis); }
-  Node mean(Node a, const std::vector<int>& axis = tensor::AllAxis) { return a.mean(axis); }
+
+  #define BINOP_CPP(def_name, op_name) ;
+
+  #define BINOP(def_name, op_name) \
+  Node def_name(Node lhs, Node rhs) {\
+    return lhs.def_name(rhs);\
+  }\
+  Node def_name(Node lhs, tensor::Constant rhs) {\
+    return lhs.def_name(rhs);\
+  }\
+  Node def_name(tensor::Constant lhs, Node rhs) {\
+    return constant(rhs.get_element_type(), lhs).def_name(rhs);\
+  }
+
+  #define UNIOP(def_name, op_name) \
+  Node def_name(Node val) {\
+    return val.def_name();\
+  }
+
+  #define REDUCEOP(def_name, op_name) \
+  Node def_name(Node val, const std::vector<int>& axis = tensor::AllAxis) {\
+    return val.def_name(axis);\
+  }
+
+  #include "operators.inc"
 
   tensor::Backend& backend() { return *backend_; }
 protected:
@@ -179,6 +201,10 @@ protected:
   
   std::unique_ptr<tensor::Backend> backend_;
 };
+
+Node::Node(GraphDevice& device, tensor::ElementType element_type, tensor::Constant val) : 
+  Node(device, device.backend().constant(element_type, val)){
+}
 
 }
 }

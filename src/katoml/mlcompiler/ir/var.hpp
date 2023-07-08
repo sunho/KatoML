@@ -29,6 +29,10 @@ public:
     return datatype;
   }
 
+  bool has_tensor() const {
+    return tensor != nullptr;
+  }
+
   const Tensor& get_tensor() const {
     return *tensor;
   }
