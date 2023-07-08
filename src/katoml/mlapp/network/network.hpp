@@ -209,6 +209,23 @@ namespace initializer {
     auto b = device.backend().zeros(tensor::DataType(input_type.get_element_type(), b_shape));
     return {std::move(W), std::move(b)};
   };
+
+  class ConstantInitializer {
+  public:
+    ConstantInitializer(compiler::Tensor&& W, compiler::Tensor&& b) : W(std::move(W)), b(std::move(b)) {
+    }
+    // FIXME: remove copy
+    ConstantInitializer(const ConstantInitializer& other) : W(other.W.copy()), b(other.b.copy()) {}
+    auto operator()(compiler::Device& device, tensor::DataType input_type, int output_size) -> std::tuple<tensor::Tensor, tensor::Tensor> {
+      return {std::move(W), std::move(b)};
+    }
+  private:
+    compiler::Tensor W,b;
+  };
+
+  static inline DenseInitializer constant(compiler::Tensor&& W, compiler::Tensor&& b) {
+    return ConstantInitializer(std::move(W), std::move(b));
+  }
 }
 
 namespace activation_func {
@@ -223,7 +240,10 @@ namespace activation_func {
 
 namespace loss_func {
   static inline LossFunc cross_entropy = [](compiler::Device& device, compiler::Node predicted, compiler::Node label) -> compiler::Node {
-    return device.mean(-device.sum(label * predicted.log(), {1}));
+    return device.mean(-device.sum(label * predicted.log(), {-1}));
+  };
+  static inline LossFunc mse = [](compiler::Device& device, compiler::Node predicted, compiler::Node label) -> compiler::Node {
+    return device.mean(device.mean((label - predicted)*(label - predicted), {-1}));
   };
 }
 

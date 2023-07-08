@@ -23,6 +23,7 @@ static Value build_unary_same_type(ir::Opcode opcode,ir::Value val) {
   return NodePtr(new Node(opcode, val.get_datatype(), {val}));
 }
 static Value build_reduce_same_type(ir::Opcode opcode,ir::Value val, ir::IntListValue axis) {
+  axis = val.get_datatype().get_shape().normalize_axis(axis.as_int_list());
   DataType datatype = val.get_datatype();
   tensor::Shape res_shape = datatype.get_shape().reduce(axis.as_int_list());
   return NodePtr(new Node(opcode, DataType(datatype.get_element_type(), res_shape), {val, axis}));
