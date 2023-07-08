@@ -198,6 +198,7 @@ static inline LayerDef input = network::layer_def("Input", [](compiler::Device& 
 
 using DenseInitializer = std::function<std::tuple<tensor::Tensor, tensor::Tensor>(compiler::Device& device, tensor::DataType input_type, size_t output_size)>;
 using ActivationFunc = std::function<compiler::Node(compiler::Device& device, compiler::Node affine)>;
+using LossFunc = std::function<compiler::Node(compiler::Device& device, compiler::Node predicted, compiler::Node label)>;
 
 namespace initializer {
   static inline DenseInitializer xavier = [](compiler::Device& device, tensor::DataType input_type, int output_size) -> std::tuple<tensor::Tensor, tensor::Tensor> {
@@ -220,6 +221,12 @@ namespace activation_func {
   };
 }
 
+namespace loss_func {
+  static inline LossFunc cross_entropy = [](compiler::Device& device, compiler::Node predicted, compiler::Node label) -> compiler::Node {
+    return device.mean(-device.sum(label * predicted.log(), {1}));
+  };
+}
+
 static inline auto dense = network::layer_def("Dense", [](compiler::Device& device, LayerPtr self, LayerPtr x, int output_size, DenseInitializer& initializer) {
   self->set_meta("output_size", std::to_string(output_size));
   auto X = x->out();
@@ -233,19 +240,56 @@ static inline auto activation = network::layer_def("Activation", [](compiler::De
   return func(device, x->out());
 });
 
+using ParamsVector = std::vector<compiler::Var>;
+
+class Model;
+
+class Optimizer {
+public:
+  virtual ~Optimizer() = default;
+  virtual void optimize(compiler::Device& device, Model& model, ParamsVector& params_vec) = 0;
+};
+
+using OptimizerPtr = std::unique_ptr<Optimizer>;
+
+namespace optimizer {
+  class SGD : public Optimizer {
+  public:
+    SGD(double learning_rate) :
+      learning_rate(learning_rate) {}
+
+    void optimize(compiler::Device& device, Model& model, ParamsVector& params_vec) override {
+      for (auto& params : params_vec) {
+        if (!params.is_nograd())
+          params.get_tensor() -= learning_rate * params.get_grad();
+      }
+    }
+
+    double get_learning_rate() const {
+      return learning_rate;
+    }
+  private:
+    double learning_rate;
+  };
+
+  static inline OptimizerPtr sgd(double learning_rate) {
+    return std::make_unique<SGD>(learning_rate);
+  }
+}
+
 class Model {
 public:
   using InputDefsMap = std::map<std::string,  compiler::PlaceHolder>;
   using InputsMap = std::map<std::string, tensor::Tensor>;
-  Model(compiler::Device& device, const InputDefsMap& input_defs, const std::vector<compiler::Var>& params, LayerPtr output) :
-    device(device), input_defs(input_defs), params(params), output(output) {
+  Model(compiler::Device& device, const InputDefsMap& input_defs, const ParamsVector& params_vec, LayerPtr output, LossFunc loss, OptimizerPtr&& optimizer) :
+    device(device), input_defs(input_defs), params_vec(params_vec), output(output), 
+      loss(loss), optimizer(std::move(optimizer)), 
+      label_placeholder(device.placeholder(output->out().get_datatype())) {
+    setup_loss();
   }
 
   tensor::Tensor run(InputsMap&& inputs) {
-    assert(std::all_of(inputs.begin(), inputs.end(), [&](auto& it) -> bool {
-      return input_defs.count(it.first);
-    }) && "invalid input given");
-    assert(inputs.size() == input_defs.size() && "not all input given");
+    verify_inputs(inputs);
     for (auto& [name, tensor] : inputs) {
       input_defs.at(name).set_tensor(std::move(tensor));
     }
@@ -253,32 +297,66 @@ public:
     return program->forward();
   }
 
-  const std::vector<compiler::Var>& get_params() const {
-    return params;
+  double optimize(InputsMap&& inputs, tensor::Tensor&& label) {
+    verify_inputs(inputs);
+    label_placeholder.set_tensor(std::move(label));
+    for (auto& [name, tensor] : inputs) {
+      input_defs.at(name).set_tensor(std::move(tensor));
+    }
+    auto program = device.compile(loss_value);
+    auto cur_loss = program->forward();
+    program->backward();
+    optimizer->optimize(device, *this, params_vec);
+    return cur_loss(0).cast<double>();
+  }
+
+  void set_loss(LossFunc&& func) {
+    this->loss = std::move(func);
+    setup_loss();
+  }
+
+  void set_optimizer(OptimizerPtr&& optimizer) {
+    this->optimizer = std::move(optimizer);
+  }
+
+  const ParamsVector& get_params_vec() const {
+    return params_vec;
   }
 
   LayerPtr get_output() const {
     return output;
   }
 private:
+  void verify_inputs(const InputsMap& inputs) {
+     assert(std::all_of(inputs.begin(), inputs.end(), [&](auto& it) -> bool {
+      return input_defs.count(it.first);
+    }) && "invalid input given");
+    assert(inputs.size() == input_defs.size() && "not all input given");
+  }
+
+  void setup_loss() {
+    if (loss) {
+      loss_value = loss(device, output->out(), label_placeholder);
+    }
+  }
+
   compiler::Device& device;
   InputDefsMap input_defs;
-  std::vector<compiler::Var> params;
+  ParamsVector params_vec;
   LayerPtr output;
+  LossFunc loss;
+  compiler::Node loss_value;
+  compiler::PlaceHolder label_placeholder;
+  OptimizerPtr optimizer;
 };
 
 using ModelPtr = std::shared_ptr<Model>;
 
-class Loss {
-public:
-
-};
-
-static inline ModelPtr finalize(LayerPtr final) {
+static inline ModelPtr finalize(LayerPtr final, LossFunc loss = nullptr, OptimizerPtr&& optimizer = nullptr) {
   assert(final->get_num_outputs() == 1 && "number of outputs of final layer must be one");
   std::set<Layer*> visited;
   std::map<std::string, compiler::PlaceHolder> inputs;
-  std::vector<compiler::Var> params;
+  std::vector<compiler::Var> params_vec;
   const auto dfs = [&](auto&& self, Layer& cur) -> void {
     if (visited.count(&cur)) { return; }
     if (cur.get_type() == LayerType::Input) {
@@ -286,13 +364,14 @@ static inline ModelPtr finalize(LayerPtr final) {
       inputs.emplace(cur.get_input_name(), cur.get_input_placeholder());
     }
     for (auto var : cur.get_params()) {
-      params.push_back(var);
+      params_vec.push_back(var);
     }
     for (auto& child : cur.ins()) {
       self(self, *child);
     }
   };
-  return std::make_shared<Model>(final->get_device(), inputs, params, final);
+  dfs(dfs, *final);
+  return std::make_shared<Model>(final->get_device(), inputs, params_vec, final, loss, std::move(optimizer));
 }
 
 }

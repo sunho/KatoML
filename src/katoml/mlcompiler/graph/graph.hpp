@@ -98,6 +98,14 @@ public:
     return var->get_tensor();
   }
 
+  bool is_nograd() const {
+    return var->is_nograd();
+  }
+
+  Tensor& get_tensor() {
+    return var->get_tensor();
+  }
+
   const Tensor& get_grad() const {
     return var->get_grad();
   }

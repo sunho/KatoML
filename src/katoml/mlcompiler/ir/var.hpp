@@ -36,6 +36,9 @@ public:
   const Tensor& get_tensor() const {
     return *tensor;
   }
+  Tensor& get_tensor() {
+    return *tensor;
+  }
   TensorPtr get_tensor_ptr() const {
     return tensor;
   }

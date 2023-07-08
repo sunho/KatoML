@@ -1,3 +1,4 @@
+#include "katoml/mlapp/network/network.hpp"
 #include "katoml/mlcompiler/mlcompiler.hpp"
 #include "katoml/mltensor/mltensor.hpp"
 #include "katoml/mlapp/mlapp.hpp"
@@ -27,7 +28,7 @@ TEST_CASE("[mlapp] Basic use case") {
   x = network::activation(x, network::activation_func::relu);
   x = network::dense(x, 10, network::initializer::xavier);
   x = network::activation(x, network::activation_func::softmax);
-  auto model = network::finalize(x);
+  auto model = network::finalize(x, network::loss_func::cross_entropy, network::optimizer::sgd(0.1));
   REQUIRE(
     to_string(model->get_output()->out()) == 
     "SoftMax(Add(MatMul(Max(Add(MatMul(Var(null), Var([Float32[10, 300]])), Var("
@@ -35,6 +36,17 @@ TEST_CASE("[mlapp] Basic use case") {
     "0, 0, 0])))"
   );
   
+  {
+    network::Model::InputsMap inputs;
+    inputs.emplace("input", device->backend().zeros_f32(1,10));
+    model->run(std::move(inputs));
+  }
+
+  {
+    network::Model::InputsMap inputs;
+    inputs.emplace("input", device->backend().zeros_f32(1,10));
+    model->optimize(std::move(inputs), device->backend().zeros_f32(10));
+  }
   // // explicit context API
   // auto x = network::input(ctx, shape);
   // x = custom_layer(ctx, x, x);

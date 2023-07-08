@@ -54,7 +54,7 @@ struct MNistDigitNetwork {
     for (int i=0;i<batch_size;i++){
       std::pair<float, int> maxi = {-1.0, 0};
       for (int j=0;j<10;j++){
-        maxi = std::max(maxi, {predicted.at<float>(i,j),j});
+        maxi = std::max(maxi, {predicted.at_typed<float>(i,j),j});
       }
       res.push_back(maxi.second);
     }
