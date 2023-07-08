@@ -46,6 +46,8 @@ public:
     this->tensor = std::make_shared<Tensor>(std::move(tensor));
   }
   const Tensor& get_grad() const {
+    ASSERT(!nograd, "tried to get gradient of nograd variable");
+    ASSERT(grad, "tried to get null gradient");
     return *grad;
   }
   TensorPtr get_grad_ptr() const {
@@ -55,7 +57,8 @@ public:
     this->grad = std::make_shared<Tensor>(get_tensor().get_backed().zeros(get_tensor().get_datatype()));
   }
   void add_grad(const Tensor& grad) {
-    assert(!nograd);
+    ASSERT(!nograd, "tried to add gradient to nograd variable");
+    ASSERT(this->grad, "tried to add to null gradient");
     (*this->grad) += grad;
   }
   bool is_nograd() const { return nograd; }

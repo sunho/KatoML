@@ -7,7 +7,6 @@
 #include <sstream>
 
 namespace katoml {
-namespace compiler {
 
 static inline std::string pretty_indent(const std::string& str, int max_width = 64) {
   int root = -1;
@@ -74,5 +73,4 @@ static inline std::string to_string(const T& value) {
   return ss.str();
 }
 
-}
 }

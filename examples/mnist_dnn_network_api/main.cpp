@@ -25,7 +25,9 @@ int main() {
 
   for (int i=0;i<10000;i++){
     auto [images, labels, _] = pick_mnist_data(data_loader, backend, default_batch_size);
-    double loss = model->optimize(network::InputsMap().set("input", std::move(images)).move(), std::move(labels));
+    double loss = model->optimize(network::IM()
+      .set("input", std::move(images)).move(),
+    std::move(labels));
     auto [images2, __, labels2] = pick_mnist_data(data_loader, backend, default_batch_size);
     auto predicted = predcited_to_label(model->run(network::IM().set("input", std::move(images)).move()));
     std::cout << "accuracy: " << match_percent(predicted, labels2) << "\n";

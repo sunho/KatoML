@@ -6,7 +6,6 @@
 #include <sstream>
 
 namespace katoml {
-namespace compiler {
 
 template<typename... Args>
 std::string format(const std::string& format_text, Args...args) {
@@ -35,5 +34,4 @@ std::string format(const std::string& format_text, Args...args) {
   return os.str();
 }
 
-}
 }

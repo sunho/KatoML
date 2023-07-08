@@ -35,23 +35,23 @@ public:
   bool is_var() const { return type == ValueType::Var; }
   bool is_node() const { return type == ValueType::Node; }
   std::string as_str() const { 
-    assert(type == ValueType::Str);
+    ASSERT(type == ValueType::Str, "tried to unwrap with wrong value type");
     return std::get<std::string>(impl);
   }
   IntList as_int_list() const {
-    assert(type == ValueType::IntList);
+    ASSERT(type == ValueType::IntList, "tried to unwrap with wrong value type");
     return std::get<IntList>(impl);
   }
   TensorPtr as_tensor() const {
-    assert(type == ValueType::Tensor);
+    ASSERT(type == ValueType::Tensor, "tried to unwrap with wrong value type");
     return std::get<TensorPtr>(impl);
   }
   NodePtr as_node() const {
-    assert(type == ValueType::Node);
+    ASSERT(type == ValueType::Node, "tried to unwrap with wrong value type");
     return std::get<NodePtr>(impl);
   }
   VarPtr as_var() const {
-    assert(type == ValueType::Var);
+    ASSERT(type == ValueType::Var, "tried to unwrap with wrong value type");
     return std::get<VarPtr>(impl);
   }
 private:

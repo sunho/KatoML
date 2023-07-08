@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "core.hpp"
-#include "errors.hpp"
 #include "types.hpp"
 #include "iter_utils.hpp"
 

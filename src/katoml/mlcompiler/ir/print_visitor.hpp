@@ -3,7 +3,7 @@
 #include "ir.hpp"
 #include "value.hpp"
 #include "../tensor.hpp"
-#include "../utils/format.hpp"
+#include <katoml/mlsupport/format.hpp>
 #include "visitor.hpp"
 
 namespace katoml {

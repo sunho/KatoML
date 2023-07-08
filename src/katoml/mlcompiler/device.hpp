@@ -1,7 +1,7 @@
 #pragma once
 
 #include "katoml/mlcompiler/ir/pass/optimizer.hpp"
-#include "katoml/mlcompiler/utils/string_utils.hpp"
+#include "katoml/mlsupport/string_utils.hpp"
 #include "katoml/mltensor/types.hpp"
 #include "tensor.hpp"
 #include "graph/graph.hpp"

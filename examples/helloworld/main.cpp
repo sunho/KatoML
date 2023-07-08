@@ -1,6 +1,6 @@
 #include <katoml/mlcompiler/device.hpp>
-#include <katoml/mlcompiler/utils/string_utils.hpp>
 
+using namespace katoml;
 using namespace katoml::compiler;
 using namespace katoml::tensor;
 

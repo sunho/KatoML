@@ -8,4 +8,5 @@ set(SOURCE_LIST
 )
 
 add_library(mltensor STATIC ${SOURCE_LIST})
+target_link_libraries(mltensor PUBLIC mlsupport)
 target_include_directories(mltensor PUBLIC ../.. ${CMAKE_CURRENT_BINARY_DIR}/../..)

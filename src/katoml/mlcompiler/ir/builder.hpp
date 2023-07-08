@@ -1,5 +1,7 @@
 #pragma once
 #include "katoml/mlcompiler/ir/types.hpp"
+#include "katoml/mlsupport/errors.hpp"
+#include "katoml/mltensor/core.hpp"
 #include "value.hpp"
 #include "node.hpp"
 
@@ -71,8 +73,7 @@ Value Builder::Neg(ir::Value val) {
 
 Value Builder::MatMul(ir::Value lhs,ir::Value rhs) {
   DataType ldatatype = lhs.get_datatype(), rdatatype = rhs.get_datatype();
-  assert(ldatatype.get_element_type() == rdatatype.get_element_type());
-  assert(ldatatype.get_shape()[1] == rdatatype.get_shape()[0]);
+  TYPE_CHECK_OR_THROW(tensor::can_matmul(ldatatype, rdatatype), "matmul", ldatatype, rdatatype);
   tensor::Shape res_shape = tensor::calculate_matmul_shape(ldatatype.get_shape(), rdatatype.get_shape());
   return NodePtr(new Node(Opcode::MatMul, DataType(ldatatype.get_element_type(), res_shape), {lhs, rhs}));
 }

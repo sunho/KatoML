@@ -5,7 +5,6 @@
 #include <sstream>
 
 namespace katoml {
-namespace tensor {
 
 class RuntimeError : public std::runtime_error {
 protected:
@@ -58,5 +57,4 @@ static inline void panic(const std::string& msg) {
 #define CHECK_OR_THROW(eval, err) { if (!(eval)) throw err(); }
 #define TYPE_CHECK_OR_THROW(eval, operation, ...) { if (!(eval)) throw DataTypeMisMatchError((operation), __VA_ARGS__); }
 
-}
 }
