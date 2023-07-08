@@ -10,14 +10,14 @@ using namespace katoml::tensor;
 static auto device = construct_device();
 static auto default_pass_manager = ir::construct_default_pass_manager();
 
-TEST_CASE( "Log softmax combine pass", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log softmax combine pass") {
   auto node = device->log(device->softmax(device->zeros_f32(1)));
   REQUIRE(to_string(node) == "Log(SoftMax([0]))");
   auto optimized = default_pass_manager->optimize(node.get_value());
   REQUIRE(to_string(optimized) == "LogSoftMax([0])");
 }
 
-TEST_CASE( "Log softmax combine pass on cross entropy", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log softmax combine pass on cross entropy") {
   auto y_ = device->placeholder_f32(Shape::Any, 2);
   y_.set_tensor(device->backend().zeros_f32(1, 2));
   auto y = device->softmax(device->zeros_f32(1, 2));

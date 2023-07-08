@@ -9,7 +9,7 @@ static auto device = construct_device();
 
 #define evaluate(eval) (device->compile(eval)->forward())
 
-TEST_CASE( "Add is computed", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Add is computed") {
   auto A = device->ones_i32(3, 3);
   REQUIRE(evaluate(A + A) == device->backend().tensor<int>({{2,2,2},{2,2,2},{2,2,2}}));
 
@@ -24,7 +24,31 @@ TEST_CASE( "Add is computed", "[cpu]" ) {
   REQUIRE(evaluate(row + col) == device->backend().tensor<int>({{11,12,13},{21,22,23},{31,32,33}}));
 }
 
-TEST_CASE( "Softmax is computed", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Sub is computed") {
+  auto A = device->ones_i32(3, 3);
+  REQUIRE(evaluate(A - A) == device->backend().tensor<int>({{0,0,0},{0,0,0},{0,0,0}}));
+
+  auto B = device->tensor<int>({1,2,3});
+  REQUIRE(evaluate(A - B) == device->backend().tensor<int>({{0,-1,-2},{0,-1,-2},{0,-1,-2}}));
+}
+
+TEST_CASE("[mlcompiler] Mul is computed") {
+  auto A = device->ones_i32(3, 3);
+  REQUIRE(evaluate(A * A) == device->backend().tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+
+  auto B = device->tensor<int>({1,2,3});
+  REQUIRE(evaluate(A * B) == device->backend().tensor<int>({{1,2,3},{1,2,3},{1,2,3}}));
+}
+
+TEST_CASE("[mlcompiler] Div is computed") {
+  auto A = device->ones_i32(3, 3);
+  REQUIRE(evaluate(A / A) == device->backend().tensor<int>({{1,1,1},{1,1,1},{1,1,1}}));
+
+  auto B = device->tensor<int>({1,2,3});
+  REQUIRE(evaluate(A / B) == device->backend().tensor<int>({{1,0,0},{1,0,0},{1,0,0}}));
+}
+
+TEST_CASE("[mlcompiler] Softmax is computed") {
   NEAR_EQUAL_EPS = Constant(1e-7);
   auto A = device->tensor<float>({1,2,3});
   REQUIRE(evaluate(A.softmax()).near_equals(device->backend().tensor<float>({0.09003057, 0.24472847, 0.66524096})));
@@ -33,7 +57,7 @@ TEST_CASE( "Softmax is computed", "[cpu]" ) {
   REQUIRE(evaluate(B.softmax()).near_equals(device->backend().tensor<float>({{1.05877070e-01,6.42176889e-02,4.75736340e-02,7.82331607e-01},{2.42746030e-03,3.28521027e-04,9.79307378e-01,1.79366403e-02},{1.22093673e-05,2.68929212e-01,7.31025390e-01,3.31885014e-05}})));
 }
 
-TEST_CASE( "Log Softmax backwards", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log Softmax backwards") {
   NEAR_EQUAL_EPS = Constant(1e-5);
   // MAX_TENSOR_LOG_LIMIT = 10000;
   auto W = device->var(device->backend().tensor<float>({1,2,3}));
@@ -44,7 +68,7 @@ TEST_CASE( "Log Softmax backwards", "[cpu]" ) {
   REQUIRE(W.get_grad().near_equals(device->backend().tensor<float>({-7.15484549,-21.1671683,-59.25661077})));
 }
 
-TEST_CASE( "Log Softmax backwards 2", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log Softmax backwards 2") {
   NEAR_EQUAL_EPS = Constant(1e-4);
   auto W = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6}}));
   auto sf = device->log_softmax(W);
@@ -54,7 +78,7 @@ TEST_CASE( "Log Softmax backwards 2", "[cpu]" ) {
   REQUIRE(W.get_grad().near_equals(device->backend().tensor<float>({{-7.15484549,-21.1671683,-59.25661077},{-162.7944501,-444.23947731,-1209.28638048}})));
 }
 
-TEST_CASE( "Mat mul backwards", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Mat mul backwards") {
   NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));
   auto B = device->var(device->backend().tensor<float>({{3,2,1},{6,5,4},{7,8,9}}));
@@ -66,7 +90,7 @@ TEST_CASE( "Mat mul backwards", "[cpu]" ) {
   REQUIRE(B.get_grad() == device->backend().tensor<float>({{12,12,12},{15,15,15},{18,18,18}}));
 }
 
-TEST_CASE( "Opertaions with constant is computed", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Opertaions with constant is computed") {
   auto A = device->tensor<int>({1,2,3});
   REQUIRE(evaluate(10 * A) == device->backend().tensor<int>({10,20,30}));
   REQUIRE(evaluate(A * 10) == device->backend().tensor<int>({10,20,30}));
@@ -77,7 +101,7 @@ TEST_CASE( "Opertaions with constant is computed", "[cpu]" ) {
   REQUIRE(evaluate(device->max(A, A)) == device->backend().tensor<int>({1,2,3}));
 }
 
-TEST_CASE( "Log softmax sum backwards", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log softmax sum backwards") {
   NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));
   auto sum1 = device->sum(A, {0});
@@ -92,7 +116,7 @@ TEST_CASE( "Log softmax sum backwards", "[cpu]" ) {
   REQUIRE(A.get_grad().near_equals(device->backend().tensor<float>({{-1.20928638e+03,-1.20928638e+03,-1.20928638e+03},{-9.80705112e+06,-9.80705112e+06,-9.80705112e+06},{-7.94673664e+10,-7.94673664e+10,-7.94673664e+10}})));
 }
 
-TEST_CASE( "Log softmax mean backwards", "[cpu]" ) {
+TEST_CASE("[mlcompiler] Log softmax mean backwards") {
   NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));
   auto mean1 = device->mean(A, {0});

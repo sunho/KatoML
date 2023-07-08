@@ -10,7 +10,7 @@ using namespace katoml::app;
 
 static auto device = construct_device();
 
-TEST_CASE( "Basic use case", "[cpu]" ) {
+TEST_CASE("[mlapp] Basic use case") {
   auto custom = [&](Device& device, network::LayerPtr self, network::LayerPtr in1, network::LayerPtr in2) {
     auto node = in1->outs()[0];
     return device.softmax(node);
