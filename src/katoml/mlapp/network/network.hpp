@@ -2,6 +2,7 @@
 
 #include "katoml/mlcompiler/device.hpp"
 #include "katoml/mlcompiler/graph/graph.hpp"
+#include "katoml/mlsupport/errors.hpp"
 #include "katoml/mltensor/types.hpp"
 #include <algorithm>
 #include <functional>
@@ -90,7 +91,7 @@ public:
   }
 
   compiler::Node out() const {
-    assert(outs().size() == 1 && "ouput size is not 1");
+    ASSERT(outs().size() == 1, "ouput size is not 1");
     return outs()[0];
   }
 
@@ -105,22 +106,22 @@ public:
   }
 
   const std::string& get_input_name() const {
-    assert(type == LayerType::Input && "non input type layer does not have input name");
+    ASSERT(type == LayerType::Input, "non input type layer does not have input name");
     return std::get<InputLayerData>(inner_data).input_name;
   }
 
   void set_input_name(const std::string& name) {
-    assert(type == LayerType::Input && "non input type layer does not have input name");
+    ASSERT(type == LayerType::Input, "non input type layer does not have input name");
     std::get<InputLayerData>(inner_data).input_name = name;
   }
 
   compiler::PlaceHolder get_input_placeholder() const {
-    assert(type == LayerType::Input && "non input type layer does not have input placeholder");
+    ASSERT(type == LayerType::Input, "non input type layer does not have input placeholder");
     return std::get<InputLayerData>(inner_data).input_placeholder;
   }
 
   void set_input_placeholder(compiler::PlaceHolder placeholder) {
-    assert(type == LayerType::Input && "non input type layer does not have input placeholder");
+    ASSERT(type == LayerType::Input, "non input type layer does not have input placeholder");
     std::get<InputLayerData>(inner_data).input_placeholder = placeholder;
   }
 
@@ -156,7 +157,7 @@ public:
 
   template<typename ...Vargs> requires LayerDefFunc<Func, Vargs...>
   LayerPtr operator()(Vargs... args) {
-    assert(__thread_context.inited() && "thread context not inited");
+    CHECK_OR_THROW(__thread_context.inited(), UninitNetworkContextError);
     return (*this)(__thread_context, args...);
   }
 
@@ -374,10 +375,10 @@ public:
   }
 private:
   void verify_inputs(const InputsMap& inputs) {
-     assert(std::all_of(inputs.get_inner().begin(), inputs.get_inner().end(), [&](auto& it) -> bool {
+    CHECK_OR_THROW(std::all_of(inputs.get_inner().begin(), inputs.get_inner().end(), [&](auto& it) -> bool {
       return input_defs.count(it.first);
-    }) && "invalid input given");
-    assert(inputs.get_inner().size() == input_defs.size() && "not all input given");
+    }), WrongNNInputsError);
+    CHECK_OR_THROW(inputs.get_inner().size() == input_defs.size(), NotEnoughNNInputsError);
   }
 
   void setup_loss() {
@@ -399,7 +400,7 @@ private:
 using ModelPtr = std::shared_ptr<Model>;
 
 static inline ModelPtr finalize(LayerPtr final, LossFunc loss = nullptr, OptimizerPtr&& optimizer = nullptr) {
-  assert(final->get_num_outputs() == 1 && "number of outputs of final layer must be one");
+  CHECK_OR_THROW(final->get_num_outputs() == 1, NonSingleNNOutputError);
   std::set<Layer*> visited;
   std::map<std::string, compiler::PlaceHolder> inputs;
   std::vector<compiler::Var> params_vec;
@@ -407,7 +408,7 @@ static inline ModelPtr finalize(LayerPtr final, LossFunc loss = nullptr, Optimiz
     if (visited.count(&cur)) { return; }
     visited.insert(&cur);
     if (cur.get_type() == LayerType::Input) {
-      assert(!inputs.count(cur.get_input_name()) && "duplicate input name");
+      CHECK_OR_THROW(!inputs.count(cur.get_input_name()), DuplicateNNInputError);
       inputs.emplace(cur.get_input_name(), cur.get_input_placeholder());
     }
     for (auto var : cur.get_params()) {

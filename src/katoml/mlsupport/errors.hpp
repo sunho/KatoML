@@ -25,6 +25,12 @@ ERROR_DEF(NullConstantError, "tried to cast null tensor constant")
 ERROR_DEF(InvalidTypedError, "tried to assign mistyped value to Typed container")
 ERROR_DEF(ExecutorInternalError, "executor internal error")
 ERROR_DEF(InvalidReduceAxisError, "invalid reduce axis")
+
+ERROR_DEF(NotEnoughNNInputsError, "not enough inputs to neural network")
+ERROR_DEF(WrongNNInputsError, "wrong input to neural network")
+ERROR_DEF(NonSingleNNOutputError, "output of neural network model must be exactly one")
+ERROR_DEF(DuplicateNNInputError, "duplicate inputs with same name defined inside neural network model")
+ERROR_DEF(UninitNetworkContextError, "thread network context not initialized")
 #undef ERROR_DEF
 
 class FatalRuntimeError final : public RuntimeError {
