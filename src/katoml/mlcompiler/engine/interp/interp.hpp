@@ -23,8 +23,15 @@ public:
   TensorPtr set(const ir::Node& node, TensorPtr tensor) {
     return cache[node.get_id()] = tensor;
   }
+  bool is_var_visited(const ir::Var& var) {
+    return visited.count(&var);
+  }
+  void visit_var(const ir::Var& var) {
+    visited.insert(&var);
+  }
 private:
   std::map<uint64_t, TensorPtr> cache;
+  std::set<const ir::Var*> visited;
 };
 
 class ForwardEvalVisitor {
@@ -84,8 +91,13 @@ public:
     case ir::ValueType::Tensor:
       return;
     case ir::ValueType::Var:
-      if(!value.as_var()->is_nograd())
-        value.as_var()->set_grad(cur_dRdY.copy());
+      if(!value.as_var()->is_nograd()) {
+        if (!cg.is_var_visited(*value.as_var())) {
+          value.as_var()->clear_grad();
+          cg.visit_var(*value.as_var());
+        }
+        value.as_var()->add_grad(cur_dRdY);
+      }
       return;
     }
   }

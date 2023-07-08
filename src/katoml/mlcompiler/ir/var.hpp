@@ -48,9 +48,12 @@ public:
   TensorPtr get_grad_ptr() const {
     return grad;
   }
-  void set_grad(Tensor&& grad) {
+  void clear_grad() {
+    this->grad = std::make_shared<Tensor>(get_tensor().get_backed().zeros(get_tensor().get_datatype()));
+  }
+  void add_grad(const Tensor& grad) {
     assert(!nograd);
-    this->grad = std::make_shared<Tensor>(std::move(grad));
+    (*this->grad) += grad;
   }
   bool is_nograd() const { return nograd; }
 

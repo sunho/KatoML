@@ -681,6 +681,10 @@ public:
     os << ss.str();
     return os;
   }
+
+  Backend& get_backed() const {
+    return backend.get();
+  }
 protected:
   void* get_data() {
     return backend.get().get_data(handle);
