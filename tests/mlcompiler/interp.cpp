@@ -97,7 +97,6 @@ TEST_CASE("[mlcompiler] Opertaions with constant is computed") {
 }
 
 TEST_CASE("[mlcompiler] Log softmax sum backwards") {
-  NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));
   auto sum1 = device->sum(A, {0});
   auto sf1 = device->log_softmax(sum1);
@@ -112,7 +111,6 @@ TEST_CASE("[mlcompiler] Log softmax sum backwards") {
 }
 
 TEST_CASE("[mlcompiler] Log softmax mean backwards") {
-  NEAR_EQUAL_EPS = Constant(1e-4);
   auto A = device->var(device->backend().tensor<float>({{1,2,3},{4,5,6},{7,8,9}}));
   auto mean1 = device->mean(A, {0});
   auto sf1 = device->log_softmax(mean1);

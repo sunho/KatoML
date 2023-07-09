@@ -1,2 +1,5 @@
-SELFOP_CPP(operator+=, add_assign, add)
-SELFOP_CPP(operator-=, sub_assign, sub)
+SELFOP(operator+=, add_assign, add)
+SELFOP(operator-=, sub_assign, sub)
+SELFOP(operator*=, mul_assign, mul)
+SELFOP(operator/=, div_assign, div)
+SELFOP(assign, fill_assign, fill)

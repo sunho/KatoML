@@ -50,6 +50,8 @@ public:
       switch(opcode) {
       case BinOpcode::add:
         return work([](T a, T b) { return a + b; });
+      case BinOpcode::fill:
+        return work([](T a, T b) { return b; });
       case BinOpcode::sub:
         return work([](T a, T b) { return a - b; });
       case BinOpcode::mul:
@@ -119,6 +121,12 @@ public:
         return work([](T a, T b) { return a + b; });
       case SelfOpcode::sub_assign:
         return work([](T a, T b) { return a - b; });
+      case SelfOpcode::mul_assign:
+        return work([](T a, T b) { return a * b; });
+      case SelfOpcode::div_assign:
+        return work([](T a, T b) { return a / b; });
+      case SelfOpcode::fill_assign:
+        return work([](T a, T b) { return b; });
       }
     }, get_element_type(res));
   }
@@ -133,13 +141,6 @@ public:
     call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, std::pair<T,T> lims) { return std::clamp(a, lims.first, lims.second); };
       IterUtils::per_element_uni_op<T, std::pair<T,T>, operation>(to_wview(res), to_rview(val), {mn.cast<T>(), mx.cast<T>()});
-    }, get_element_type(res));
-    return true;
-  }
-  bool fill(HandleView res, Constant val) override {
-     call_with_type<void>([&]<typename T>(type_wrapper<T>) {
-      const auto operation = [](T a, T val) { return val; };
-      IterUtils::per_element_self<T, T, operation>(to_wview(res), val.cast<T>());
     }, get_element_type(res));
     return true;
   }

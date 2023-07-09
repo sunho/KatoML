@@ -7,4 +7,4 @@
 #undef UNIOP
 #undef UNIOP_CPP
 #undef REDUCEOP
-#undef SELFOP_CPP
+#undef SELFOP

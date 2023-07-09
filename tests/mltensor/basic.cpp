@@ -208,11 +208,50 @@ TEST_CASE("[mltensor] Add assign to view") {
   }(), ViewAssignAllocationError);
 }
 
+TEST_CASE("[mltensor] Assign to view") {
+  auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{1,2,3,3,2,1,1,2,3}}})));
+  A_view.assign(backend->tensor<int>({1}));
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{1,1,1,1,1,1,1,1,1}}})));
+  REQUIRE_THAT(A, EqualsTensor(backend->tensor<int>({{1,1,1},{1,1,1},{1,1,1}})));
+  
+  auto B = backend->tensor<int>({1});
+  auto B_view = B.reshaped(Shape({1,1}));
+  REQUIRE_THROWS_AS([&](){
+    B_view.assign(A);
+  }(), ViewAssignAllocationError);
+}
+
+TEST_CASE("[mltensor] Div assign to view") {
+  auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{1,2,3,3,2,1,1,2,3}}})));
+  A_view /= backend->tensor<int>({2});
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{0,1,1,1,1,0,0,1,1}}})));
+  REQUIRE_THAT(A, EqualsTensor(backend->tensor<int>({{0,1,1},{1,1,0},{0,1,1}})));
+}
+
+TEST_CASE("[mltensor] Mul assign to view") {
+  auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
+  auto A_view = A.reshaped(Shape({1,1,9}));
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{1,2,3,3,2,1,1,2,3}}})));
+  A_view *= backend->tensor<int>({2});
+  REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{2,4,6,6,4,2,2,4,6}}})));
+  REQUIRE_THAT(A, EqualsTensor(backend->tensor<int>({{2,4,6},{6,4,2},{2,4,6}})));
+  
+  auto B = backend->tensor<int>({1});
+  auto B_view = B.reshaped(Shape({1,1}));
+  REQUIRE_THROWS_AS([&](){
+    B_view *= A;
+  }(), ViewAssignAllocationError);
+}
+
 TEST_CASE("[mltensor] Fill to view") {
   auto A = backend->tensor<int>({{1,2,3},{3,2,1},{1,2,3}});
   auto A_view = A.reshaped(Shape({1,1,9}));
   REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{1,2,3,3,2,1,1,2,3}}})));
-  A_view.fill(20);
+  A_view.assign(20);
   REQUIRE_THAT(A_view, EqualsTensor(backend->tensor<int>({{{20,20,20,20,20,20,20,20,20}}})));
   REQUIRE_THAT(A, EqualsTensor(backend->tensor<int>({{20,20,20},{20,20,20},{20,20,20}})));
 }
@@ -223,7 +262,7 @@ TEST_CASE("[mltensor] Use freed tensor") {
   A = backend->tensor<int>({1});
   
   REQUIRE_THROWS_AS([&](){
-    A_view.fill(1);
+    A_view.assign(1);
   }(), UseAfterFreeError);
     
   REQUIRE_THROWS_AS([&](){

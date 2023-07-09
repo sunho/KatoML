@@ -76,16 +76,16 @@ static inline const char* opcode_to_string(ReduceOpcode opcode) {
 }
 
 enum class SelfOpcode {
-  #define SELFOP_CPP(def_name, func_name, fallback) func_name,
+  #define SELFOP(def_name, func_name, fallback) func_name,
   #include "operators/self_def.inc"
-  #undef SELFOP_CPP
+  #undef SELFOP
 };
 
 static inline const char* opcode_to_string(SelfOpcode opcode) {
   switch(opcode) {
-  #define SELFOP_CPP(def_name, func_name, fallback) case SelfOpcode::func_name: return #func_name;
+  #define SELFOP(def_name, func_name, fallback) case SelfOpcode::func_name: return #func_name;
   #include "operators/self_def.inc"
-  #undef SELFOP_CPP
+  #undef SELFOP
   }
 }
 
@@ -129,7 +129,6 @@ public:
   virtual bool selfop(SelfOpcode opcode, HandleView res, HandleView rhs) = 0;
   virtual bool near_equals(bool& res, HandleView lhs, HandleView rhs) = 0;
   virtual bool clip(HandleView res, HandleView val, Constant mn, Constant mx) = 0;
-  virtual bool fill(HandleView res, Constant val) = 0;
 };
 
 static Constant NEAR_EQUAL_EPS = std::numeric_limits<float>::epsilon()*100; 
@@ -310,7 +309,7 @@ public:
   #define UNIOP(def_name, func_name) inline Tensor def_name(const Tensor& val);
   #define UNIOP_CPP(def_name, func_name) ;
   #define REDUCEOP(def_name, func_name) inline Tensor def_name(const Tensor& val, const AxisArray& axis = AllAxis);
-  #define SELFOP_CPP(def_name, func_name, fallback) ;
+  #define SELFOP(def_name, func_name, fallback) ;
   #include "operators/operators.inc"
 
   inline Tensor zeros(DataType datatype);
@@ -361,13 +360,13 @@ private:
 
   Handle selfop(SelfOpcode opcode, Handle res, Handle rhs) {
     switch(opcode) {
-    #define SELFOP_CPP(def_name, func_name, fallback) case SelfOpcode::func_name: {\
+    #define SELFOP(def_name, func_name, fallback) case SelfOpcode::func_name: {\
       if (!can_no_alloc_bin_assign_op(opcode_to_string(opcode), res, rhs))\
         return binop(BinOpcode::fallback, res, rhs); \
       break;\
     }
     #include "operators/self_def.inc"
-    #undef SELFOP_CPP
+    #undef SELFOP
     }
     per_element_bin_op_prepare(res, rhs);
     unwrap(executor->selfop(opcode, res.view(), rhs.view()));   
@@ -411,9 +410,6 @@ private:
   Handle allocate(TensorDescriptor descriptor) {
     ExecutorHandle ehandle = executor->allocate(descriptor);
     return Handle(ehandle, descriptor);
-  }
-  void fill(Handle handle, Constant val) {
-    unwrap(executor->fill(handle.view(), val));
   }
   Handle reshape(Handle handle, Shape shape) {
     TYPE_CHECK_OR_THROW(can_reshape(handle.shape, shape), "reshape", handle.get_datatype(), handle.get_datatype().set_shape(shape))
@@ -627,11 +623,16 @@ public:
     sanity_check();\
     return Tensor(backend.get(), backend.get().reduceop(ReduceOpcode::func_name, handle, axis));\
   }
-  #define SELFOP_CPP(def_name, func_name, fallback) \
+  #define SELFOP(def_name, func_name, fallback) \
   Tensor& def_name(const Tensor& rhs) {\
     sanity_check(rhs);\
     assign_handle(backend.get().selfop(SelfOpcode::func_name, handle, rhs.handle));\
     return *this;\
+  }\
+  Tensor& def_name(Constant rhs) {\
+    sanity_check();\
+    auto constant = backend.get().constant(get_element_type(), rhs);\
+    return def_name(constant);\
   }
   #include "operators/operators.inc"
 
@@ -662,10 +663,6 @@ public:
 
   // =============================
   // * self modifying operations *
-  void fill(Constant val) {
-    sanity_check();
-    backend.get().fill(handle, val);
-  }
   void reshape(Shape shape) {
     sanity_check();
     assign_handle(backend.get().reshape(handle, shape));
@@ -842,8 +839,11 @@ public:
   TypedTensor def_name(const AxisArray& axis = AllAxis) const {\
     return Tensor::def_name(axis);\
   }
-  #define SELFOP_CPP(def_name, func_name, fallback) \
+  #define SELFOP(def_name, func_name, fallback) \
   TypedTensor& def_name(const TypedTensor& rhs) {\
+    return Tensor::def_name(rhs);\
+  }\
+  TypedTensor& def_name(Constant rhs) {\
     return Tensor::def_name(rhs);\
   }
   #include "operators/operators.inc"
@@ -911,7 +911,7 @@ Tensor Backend::def_name(const Tensor& val) {\
 Tensor Backend::def_name(const Tensor& val, const AxisArray& axis) {\
   return val.def_name(axis);\
 }
-#define SELFOP_CPP(def_name, func_name, fallback) ;
+#define SELFOP(def_name, func_name, fallback) ;
 #include "operators/operators.inc"
 
 Tensor Backend::zeros(DataType datatype) {
@@ -921,7 +921,7 @@ Tensor Backend::zeros(DataType datatype) {
 
 Tensor Backend::ones(DataType datatype) {
   auto res = zeros(datatype);
-  res.fill(1);
+  res.assign(1);
   return res;
 }
 
@@ -1005,20 +1005,20 @@ Tensor Backend::from_vector(const std::vector<std::vector<std::vector<T>>>& data
 
 Tensor Backend::tensor(DataType datatype, Constant val) {
   auto res = zeros(datatype);
-  res.fill(val);
+  res.at(0) = val;
   return res;
 }
 
 Tensor Backend::constant(ElementType element_type, Constant val) {
   auto res = zeros(DataType(element_type, Shape({1})));
-  res.fill(val);
+  res.at(0) = val;
   return res;
 }
 
 template<typename T>
 Tensor Backend::constant(T val) {
   auto res = zeros(DataType(find_element_type(type_wrapper<T>()), Shape({1})));
-  res.fill(val);
+  res.at(0).cast<T>() = val;
   return res;
 }
 
