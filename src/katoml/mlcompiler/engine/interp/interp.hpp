@@ -218,6 +218,10 @@ TensorPtr ForwardEvalVisitor::Log(ir::Value val) {
   return wrap(safe_log( evaluate(val)));
 }
 
+TensorPtr ForwardEvalVisitor::Exp(ir::Value val) {
+  return wrap(evaluate(val).exp());
+}
+
 TensorPtr ForwardEvalVisitor::Neg(ir::Value val) {
   return wrap(-evaluate(val));
 }
@@ -253,7 +257,9 @@ static inline std::vector<int> find_broadcast_axis(tensor::Shape vshape, tensor:
 
 void BackwardVisitor::Add(Diff& diff, ir::Value lhs, ir::Value rhs) {
   auto process = [&](const Tensor& val, const Tensor& other) {
-    return diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    auto res = diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    res.reshape(val.get_shape());
+    return res;
   };
   backward(lhs, process(evaluate(lhs), evaluate(rhs)));
   backward(rhs, process(evaluate(rhs), evaluate(lhs)));
@@ -261,7 +267,9 @@ void BackwardVisitor::Add(Diff& diff, ir::Value lhs, ir::Value rhs) {
 
 void BackwardVisitor::Sub(Diff& diff, ir::Value lhs, ir::Value rhs) {
   auto process = [&](const Tensor& val, const Tensor& other) {
-    return diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    auto res = diff.dRdY.sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    res.reshape(val.get_shape());
+    return res;
   };
   backward(lhs, process(evaluate(lhs), evaluate(rhs)));
   backward(rhs, -process(evaluate(rhs), evaluate(lhs)));
@@ -269,7 +277,9 @@ void BackwardVisitor::Sub(Diff& diff, ir::Value lhs, ir::Value rhs) {
 
 void BackwardVisitor::Max(Diff& diff, ir::Value lhs, ir::Value rhs) {
   auto process = [&](const Tensor& val, const Tensor& other) {
-    return ((val >= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    auto res = ((val >= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    res.reshape(val.get_shape());
+    return res;
   };
   backward(lhs, process(evaluate(lhs), evaluate(rhs)));
   backward(rhs, process(evaluate(rhs), evaluate(lhs)));
@@ -277,7 +287,9 @@ void BackwardVisitor::Max(Diff& diff, ir::Value lhs, ir::Value rhs) {
 
 void BackwardVisitor::Min(Diff& diff, ir::Value lhs, ir::Value rhs) {
   auto process = [&](const Tensor& val, const Tensor& other) {
-    return ((val <= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    auto res = ((val <= other) * diff.dRdY).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    res.reshape(val.get_shape());
+    return res;
   };
   backward(lhs, process(evaluate(lhs), evaluate(rhs)));
   backward(rhs, process(evaluate(rhs), evaluate(lhs)));
@@ -285,28 +297,45 @@ void BackwardVisitor::Min(Diff& diff, ir::Value lhs, ir::Value rhs) {
 
 void BackwardVisitor::Mul(Diff& diff, ir::Value lhs, ir::Value rhs) {
   auto process = [&](const Tensor& val, const Tensor& other) {
-    return (diff.dRdY * other).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    auto res = (diff.dRdY * other).sum(find_broadcast_axis(val.get_shape(), other.get_shape()));
+    res.reshape(val.get_shape());
+    return res;
   };
   backward(lhs, process(evaluate(lhs), evaluate(rhs)));
   backward(rhs, process(evaluate(rhs), evaluate(lhs)));
 }
 
 void BackwardVisitor::Div(Diff& diff, ir::Value lhs, ir::Value rhs) {
-  assert(false);
+  auto reduce = [&](const Tensor& val, const Tensor& cur, const Tensor& other) {
+    auto res = val.sum(find_broadcast_axis(cur.get_shape(), other.get_shape()));
+    res.reshape(cur.get_shape());
+    return res;
+  };
+  auto& lhs_ = evaluate(lhs);
+  auto& rhs_ = evaluate(rhs);
+  backward(lhs, reduce(diff.dRdY / rhs_, lhs_, rhs_));
+  backward(rhs, reduce(-diff.dRdY * diff.cur / rhs_, rhs_, lhs_));
 }
 
 void BackwardVisitor::SoftMax(Diff& diff, ir::Value val) {
-
+  auto sum = (diff.dRdY * diff.cur).sum({-1});
+  if (diff.cur.get_ndims() > 1) sum.extend_axis();
+  backward(val, -sum * diff.cur + diff.dRdY * diff.cur);
 }
 
 void BackwardVisitor::LogSoftMax(Diff& diff, ir::Value val) {
-  const auto& val_ = evaluate(val);
   auto sum = diff.dRdY.sum({-1});
-  if (val_.get_ndims() > 1) sum.extend_axis();
-  backward(val, -sum *  val_.exp() + diff.dRdY);
+  if (diff.cur.get_ndims() > 1) sum.extend_axis();
+  backward(val, -sum * diff.cur.exp() + diff.dRdY);
 }
 
 void BackwardVisitor::Log(Diff& diff, ir::Value val) {
+  const auto& val_ = evaluate(val);
+  backward(val, diff.dRdY / val_);
+}
+
+void BackwardVisitor::Exp(Diff& diff, ir::Value val) {
+  backward(val, diff.cur * diff.dRdY);
 }
 
 void BackwardVisitor::Neg(Diff& diff, ir::Value val) {

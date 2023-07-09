@@ -563,7 +563,14 @@ public:
       return *this;
     }
     template<typename T>
-    T& cast() {
+    T cast() {
+      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
+      return call_with_type<T>([&]<typename F>(type_wrapper<F>) {
+        return static_cast<T>(*reinterpret_cast<F*>(data + offset));
+      }, parent.get().get_element_type());
+    }
+    template<typename T>
+    T& raw() {
       uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
       return *reinterpret_cast<T*>(data + offset);
     }
@@ -590,7 +597,7 @@ public:
   }
   template<typename T, signed_type... Index>
   T& at_typed(Index... index) {
-    return at(index...).template cast<T>();
+    return at(index...).template raw<T>();
   }
 
   #define BINOP_NO_CONST(def_name, func_name)\

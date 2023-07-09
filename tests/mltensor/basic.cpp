@@ -317,7 +317,7 @@ TEST_CASE("[mltensor] at is working") {
   REQUIRE(A.at(0,2).cast<int>() == 3);
   for (int i=0;i<1000;i++){
     REQUIRE(A.at(0,2).cast<int>() == 3+i);
-    A.at(0,2).cast<int>() += 1;
+    A.at(0,2).raw<int>() += 1;
   }
 }
 
@@ -328,7 +328,7 @@ TEST_CASE("[mltensor] index is working") {
   REQUIRE(A(0,2).cast<int>() == 3);
   for (int i=0;i<1000;i++){
     REQUIRE(A(0,2).cast<int>() == 3+i);
-    A(0,2).cast<int>() += 1;
+    A(0,2).raw<int>() += 1;
   }
 }
 

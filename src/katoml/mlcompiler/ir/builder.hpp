@@ -62,6 +62,10 @@ Value Builder::Log(ir::Value val) {
   return build_unary_same_type(Opcode::Log, val);
 }
 
+Value Builder::Exp(ir::Value val) {
+  return build_unary_same_type(Opcode::Exp, val);
+}
+
 Value Builder::Neg(ir::Value val) {
   return build_unary_same_type(Opcode::Neg, val);
 }

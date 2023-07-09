@@ -112,6 +112,10 @@ void PrinterVisitor::Log(ir::Value val) {
   os << format("Log({})", val);
 }
 
+void PrinterVisitor::Exp(ir::Value val) {
+  os << format("Exp({})", val);
+}
+
 void PrinterVisitor::ReduceSum(ir::Value val, ir::IntListValue axis) {
   os << format("ReduceSum({}, axis={})", val, axis);
 }

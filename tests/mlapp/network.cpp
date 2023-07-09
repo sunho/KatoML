@@ -1,5 +1,6 @@
 #include "katoml/mlapp/network/network.hpp"
 #include "katoml/mlcompiler/mlcompiler.hpp"
+#include "katoml/mltensor/core.hpp"
 #include "katoml/mltensor/mltensor.hpp"
 #include "katoml/mlapp/mlapp.hpp"
 #include "katoml/mltensor/types.hpp"
@@ -82,3 +83,47 @@ TEST_CASE("[mlapp] Simple linear model") {
   }
 }
 
+TEST_CASE("[mlapp] Simple softmax model") {
+  network::Context ctx(*device);
+  network::set_thread_context(std::move(ctx));
+
+  auto x = network::input("input", DataType(ElementType::Float64, Shape({Shape::Any, 5})));
+  x = network::dense(x, 3, network::initializer::constant(device->backend().zeros_f64(5,3).fill(0.01f), device->backend().zeros_f64(3).fill(0.01f)));
+  x = network::activation(x, network::activation_func::softmax);
+  auto model = network::finalize(x, network::loss_func::cross_entropy, network::optimizer::sgd(1.0));
+
+  auto data = device->backend().tensor<double>({
+    {-1.1258398, -1.1523602, -0.2505786, -0.4338788,  0.8487104},
+    { 0.6920092, -0.3160128, -2.1152194,  0.3222749, -1.2633348},
+    { 0.3499832,  0.3081339,  0.1198415,  1.2376579,  1.1167772},
+    {-0.2472782, -1.3526537, -1.6959312,  0.5666506,  0.7935084},
+    { 0.5988395, -1.5550951, -0.3413604,  1.8530061,  0.7501895},
+    {-0.5854976, -0.1733968,  0.1834779,  1.3893661,  1.5863342},
+    { 0.9462984, -0.8436767, -0.6135831,  0.0315927,  1.0553575},
+    { 0.1778437, -0.2303355, -0.3917544,  0.5432947, -0.3951575},
+    { 0.2055257, -0.4503298,  1.5209795,  3.4105027, -1.5311843},
+    {-1.2341350,  1.8197253, -0.5515287, -1.3253260,  0.1885536}
+  });
+  auto label = device->backend().tensor<double>({
+    {1., 0., 0.},
+    {1., 0., 0.},
+    {0., 0., 1.},
+    {1., 0., 0.},
+    {0., 0., 1.},
+    {0., 0., 1.},
+    {0., 0., 1.},
+    {1., 0., 0.},
+    {0., 0., 1.},
+    {1., 0., 0.}
+  });
+  std::vector<double> losses;
+  for (int i=0;i<10;i++) {
+    auto inputs = network::IM(); 
+    inputs.set("input", data.copy());
+    losses.push_back(model->optimize(std::move(inputs), label.copy()));
+  }
+  std::vector<double> ans = {1.0986121892929077, 0.49101758003234863, 0.3514918088912964, 0.2814021706581116, 0.23764991760253906};
+  for (int i=0;i<5;i++){
+    REQUIRE(losses[i] == Catch::Approx(ans[i]));
+  }
+}
