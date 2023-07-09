@@ -5,6 +5,7 @@
 #include "katoml/mlsupport/errors.hpp"
 #include "katoml/mltensor/types.hpp"
 #include <algorithm>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <variant>
@@ -366,12 +367,39 @@ public:
     this->optimizer = std::move(optimizer);
   }
 
-  const ParamsVector& get_params_vec() const {
+  ParamsVector& get_params_vec() {
     return params_vec;
   }
 
   LayerPtr get_output() const {
     return output;
+  }
+
+  void save_params(const std::string& filepath) {
+    std::ofstream fs(filepath, std::ios::binary | std::ios::out);
+    fs << params_vec.size();
+    for (auto& params : params_vec) {
+      auto buffer = params.get_tensor().save();
+      auto desc = buffer.get_descriptor();
+      fs.write(reinterpret_cast<const char*>(&desc), sizeof(desc));
+      fs.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+    }
+  }
+
+  void load_params(const std::string& filepath) {
+    std::ifstream fs(filepath, std::ios::binary | std::ios::in);
+    size_t size;
+    fs >> size;
+    CHECK_OR_THROW(size == params_vec.size(), NonMatchingTensorsInFileError)
+    for (size_t i=0;i<size;i++){
+      tensor::TensorDescriptor desc;
+      fs.read(reinterpret_cast<char*>(&desc), sizeof(desc));
+      CHECK_OR_THROW(desc.get_datatype() == params_vec[i].get_tensor().get_datatype(), NonMatchingTensorsInFileError)
+      std::vector<char> data(desc.get_data_size());
+      fs.read(data.data(), desc.get_data_size());
+      auto tensor = device.backend().load(tensor::TensorBuffer(desc, reinterpret_cast<uint8_t*>(data.data()), data.size()));
+      params_vec[i].set_tensor(std::move(tensor));
+    }
   }
 private:
   void verify_inputs(const InputsMap& inputs) {

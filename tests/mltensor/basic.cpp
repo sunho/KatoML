@@ -357,3 +357,13 @@ TEST_CASE("[mltensor] index arbitrary constant is working") {
   B(0) = 1.5f;
   REQUIRE(B(0).cast<float>() == 1.5f);
 }
+
+TEST_CASE("[mltensor] save and load is working") {
+  auto A = backend->tensor<int>({{1,2,(int)1e9}});
+  auto buffer = A.save();
+  auto B = backend->load(buffer);
+  REQUIRE_THAT(A, EqualsTensor(B));
+  auto A_transposed = A.transposed();
+  auto C = backend->load(A_transposed.save());
+  REQUIRE_THAT(A_transposed, EqualsTensor(C));
+}

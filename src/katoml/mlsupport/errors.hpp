@@ -31,6 +31,7 @@ ERROR_DEF(WrongNNInputsError, "wrong input to neural network")
 ERROR_DEF(NonSingleNNOutputError, "output of neural network model must be exactly one")
 ERROR_DEF(DuplicateNNInputError, "duplicate inputs with same name defined inside neural network model")
 ERROR_DEF(UninitNetworkContextError, "thread network context not initialized")
+ERROR_DEF(NonMatchingTensorsInFileError, "tensors in the file not matching the datatypes of model's parameters")
 #undef ERROR_DEF
 
 class FatalRuntimeError final : public RuntimeError {

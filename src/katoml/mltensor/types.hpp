@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <limits>
@@ -243,6 +244,12 @@ public:
     res.shape = shape;
     return res;
   }
+  bool operator==(const DataType& other) const {
+    return element_type == other.element_type && shape == other.shape;
+  }
+  bool operator!=(const DataType& other) const {
+    return !operator==(other);
+  }
 private:
   ElementType element_type{};
   Shape shape{};
@@ -355,7 +362,7 @@ public:
     return DataType(element_type, shape);
   }
   size_t get_data_size() const {
-    return shape[0] * strides[0]; 
+    return get_element_type_size(get_element_type()) * shape.get_total();
   }
   size_t get_ndims() const { return shape.get_ndims(); }
   ElementType get_element_type() const { return element_type; }

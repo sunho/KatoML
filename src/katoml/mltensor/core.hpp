@@ -237,8 +237,27 @@ static inline Shape calculate_reshape_shape(Shape old, Shape newi) {
   return newi;
 }
 
-static std::random_device rd;
-static std::mt19937 rng(rd());
+class TensorBuffer {
+public:
+  TensorBuffer(TensorDescriptor desc, const uint8_t* buffer_start, size_t size) : 
+    desc(desc), buffer(buffer_start, buffer_start+size) {
+  }
+  TensorDescriptor get_descriptor() const {
+    return desc;
+  }
+  const uint8_t* data() const {
+    return buffer.data();
+  }
+  size_t size() const {
+    return buffer.size();
+  }
+private:
+  TensorDescriptor desc;
+  std::vector<uint8_t> buffer; 
+};
+
+static inline std::random_device rd;
+static inline std::mt19937 rng(rd());
 
 class Tensor;
 template<typename T>
@@ -335,6 +354,7 @@ public:
   inline Tensor normalize(const Tensor& tensor);
   template<typename T, signed_type... Sz>
   inline TypedTensor<T> zeros(Sz... sz);
+  inline Tensor load(const TensorBuffer& buffer);
 
   friend class Tensor;
 private:
@@ -537,9 +557,8 @@ public:
   }
   template<signed_type... Index>
   Constant at(Index... index) const {
-    const uint8_t* data = reinterpret_cast<const uint8_t*>(get_data());
     return call_with_type<Constant>([&]<typename T>(type_wrapper<T>) {
-      return *reinterpret_cast<const T*>(data + calculate_offset(index...));
+      return *reinterpret_cast<const T*>(get_data() + calculate_offset(index...));
     }, get_element_type());
   }
   template<signed_type... Index>
@@ -548,31 +567,27 @@ public:
   }
   using SlowTensorIndex = std::vector<int>;
   Constant at_slow(const SlowTensorIndex& index) const {
-    const uint8_t* data = reinterpret_cast<const uint8_t*>(get_data());
     return call_with_type<Constant>([&]<typename T>(type_wrapper<T>) {
-      return *reinterpret_cast<const T*>(data + calculate_offset(index));
+      return *reinterpret_cast<const T*>(get_data() + calculate_offset(index));
     }, get_element_type());
   }
   class ConstantSetter {
   public:
     ConstantSetter& operator=(Constant constant) {
-      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
       call_with_type<void>([&]<typename T>(type_wrapper<T>) {
-        *reinterpret_cast<T*>(data + offset) = constant.cast<T>();
+        *reinterpret_cast<T*>(parent.get().get_data() + offset) = constant.cast<T>();
       }, parent.get().get_element_type());
       return *this;
     }
     template<typename T>
     T cast() {
-      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
       return call_with_type<T>([&]<typename F>(type_wrapper<F>) {
-        return static_cast<T>(*reinterpret_cast<F*>(data + offset));
+        return static_cast<T>(*reinterpret_cast<F*>(parent.get().get_data() + offset));
       }, parent.get().get_element_type());
     }
     template<typename T>
     T& raw() {
-      uint8_t* data = reinterpret_cast<uint8_t*>(parent.get().get_data());
-      return *reinterpret_cast<T*>(data + offset);
+      return *reinterpret_cast<T*>(parent.get().get_data() + offset);
     }
     friend class Tensor;
   private:
@@ -683,6 +698,10 @@ public:
   }
   // =============================
 
+  TensorBuffer save() const {
+    return TensorBuffer(get_descriptor(), get_data(), get_descriptor().get_data_size());
+  }
+
   using IterateFunc = std::function<void(const SlowTensorIndex& index)>;
   void iterate_slow(IterateFunc&& func) const {
     auto dfs = [&](auto self, SlowTensorIndex cur) -> void {
@@ -731,11 +750,11 @@ public:
     return backend.get();
   }
 protected:
-  void* get_data() {
-    return backend.get().get_data(handle);
+  uint8_t* get_data() {
+    return reinterpret_cast<uint8_t*>(backend.get().get_data(handle));
   }
-  const void* get_data() const {
-    return backend.get().get_data(handle);
+  const uint8_t* get_data() const {
+    return reinterpret_cast<const uint8_t*>(backend.get().get_data(handle));
   }
   Tensor wrap(Backend::Handle newi) const {
     if (handle == newi) 
@@ -1070,6 +1089,13 @@ TypedTensor<T> Backend::zeros(Sz... sz) {
 
 Tensor Backend::make_tensor(Handle handle) { 
   return Tensor(*this, handle); 
+}
+
+Tensor Backend::load(const TensorBuffer& buffer) {
+  auto handle = allocate(buffer.get_descriptor());
+  uint8_t* data = reinterpret_cast<uint8_t*>(get_data(handle));
+  std::memcpy(data, buffer.data(), buffer.size());
+  return make_tensor(handle);
 }
 
 }

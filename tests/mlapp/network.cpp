@@ -4,6 +4,8 @@
 #include "katoml/mltensor/mltensor.hpp"
 #include "katoml/mlapp/mlapp.hpp"
 #include "katoml/mltensor/types.hpp"
+#include "../common.hpp"
+#include <filesystem>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -126,4 +128,19 @@ TEST_CASE("[mlapp] Simple softmax model") {
   for (int i=0;i<5;i++){
     REQUIRE(losses[i] == Catch::Approx(ans[i]));
   }
+}
+
+TEST_CASE("[mlapp] Save and load model is working") {
+  network::Context ctx(*device);
+  network::set_thread_context(std::move(ctx)); // or set_global_conext(ctx); default to global context if no thread context exists
+  auto x = network::input("input", DataType(ElementType::Float32, Shape({1, 10})));
+  x = network::dense(x, 300, network::initializer::xavier); 
+  auto model = network::finalize(x);
+  model->save_params(std::filesystem::temp_directory_path() / "__mlapp_save_load_test_model.kato");
+  auto p1 = model->get_params_vec()[0].get_tensor().copy();
+  auto p2 = model->get_params_vec()[1].get_tensor().copy();
+  model->get_params_vec()[0].set_tensor(device->backend().zeros(p1.get_datatype()));
+  model->load_params(std::filesystem::temp_directory_path() / "__mlapp_save_load_test_model.kato");
+  REQUIRE_THAT(model->get_params_vec()[0].get_tensor(), EqualsTensor(p1));
+  REQUIRE_THAT(model->get_params_vec()[1].get_tensor(), EqualsTensor(p2));
 }
