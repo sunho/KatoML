@@ -68,6 +68,8 @@ public:
         return work([](T a, T b) { return static_cast<T>(a > b); });
       case BinOpcode::more_eq:
         return work([](T a, T b) { return static_cast<T>(a >= b); });
+      case BinOpcode::equal:
+        return work([](T a, T b) { return static_cast<T>(a == b); });
       case BinOpcode::matmul:
         return matmul(res, lhs, rhs);
       }
@@ -123,13 +125,6 @@ public:
   bool near_equals(bool& res, HandleView lhs, HandleView rhs) override {
     call_with_type<void>([&]<typename T>(type_wrapper<T>) {
       const auto operation = [](T a, T b) { return std::abs(a-b) < NEAR_EQUAL_EPS.cast<T>(); };
-      res = IterUtils::all<T, operation>(to_rview(lhs), to_rview(rhs));
-    }, get_element_type(lhs));
-    return true;
-  }
-  bool equals(bool& res, HandleView lhs, HandleView rhs) override {
-    call_with_type<void>([&]<typename T>(type_wrapper<T>) {
-      const auto operation = [](T a, T b) { return a == b; };
       res = IterUtils::all<T, operation>(to_rview(lhs), to_rview(rhs));
     }, get_element_type(lhs));
     return true;

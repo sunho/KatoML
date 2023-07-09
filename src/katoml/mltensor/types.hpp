@@ -427,6 +427,12 @@ public:
       [](auto v) {return static_cast<T>(v); }
     }, val);
   }
+  bool operator==(const Constant& other) const {
+    return type == other.type && val == other.val;
+  }
+  bool operator!=(const Constant& other) const {
+    return !(Constant::operator==(other));
+  }
   static inline Constant max() {
     return Constant(ConstantType::Max);
   }

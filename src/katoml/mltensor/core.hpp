@@ -128,13 +128,11 @@ public:
   virtual bool reduceop(ReduceOpcode opcode, HandleView res, HandleView res_std, HandleView val, const AxisArray& axis) = 0;
   virtual bool selfop(SelfOpcode opcode, HandleView res, HandleView rhs) = 0;
   virtual bool near_equals(bool& res, HandleView lhs, HandleView rhs) = 0;
-  virtual bool equals(bool& res, HandleView lhs, HandleView rhs) = 0;
   virtual bool clip(HandleView res, HandleView val, Constant mn, Constant mx) = 0;
   virtual bool fill(HandleView res, Constant val) = 0;
 };
 
-
-static Constant NEAR_EQUAL_EPS = 1e-10; 
+static Constant NEAR_EQUAL_EPS = std::numeric_limits<float>::epsilon()*100; 
 
 static inline bool can_broadcast_shape(Shape lhs, Shape rhs) {
   if (lhs == rhs) return true;
@@ -382,13 +380,6 @@ private:
     unwrap(executor->reduceop(opcode, res.view(), res_.view(), val.view(), axis));
     return res;
   }
-
-  bool equals(Handle lhs, Handle rhs) {
-    if (lhs.shape != rhs.shape) return false;
-    bool res;
-    unwrap(executor->equals(res, lhs.view(), rhs.view()));
-    return res;
-  }
   bool near_equals(Handle lhs, Handle rhs) {
     if (lhs.shape != rhs.shape) return false;
     bool res;
@@ -559,7 +550,13 @@ public:
   Constant operator()(Index... index) const {
     return at(index...);
   }
-
+  using SlowTensorIndex = std::vector<int>;
+  Constant at_slow(const SlowTensorIndex& index) const {
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(get_data());
+    return call_with_type<Constant>([&]<typename T>(type_wrapper<T>) {
+      return *reinterpret_cast<const T*>(data + calculate_offset(index));
+    }, get_element_type());
+  }
   class ConstantSetter {
   public:
     ConstantSetter& operator=(Constant constant) {
@@ -583,6 +580,9 @@ public:
   template<signed_type... Index>
   ConstantSetter at(Index... index) {
     return ConstantSetter(*this, calculate_offset(index...));
+  }
+  ConstantSetter at_slow(const SlowTensorIndex& index) {
+    return ConstantSetter(*this, calculate_offset(index));
   }
   template<signed_type... Index>
   ConstantSetter operator()(Index... index) {
@@ -635,10 +635,6 @@ public:
   }
   #include "operators/operators.inc"
 
-  bool operator==(const Tensor& rhs) const {
-    sanity_check(rhs);
-    return backend.get().equals(handle, rhs.handle);
-  }
   bool near_equals(const Tensor& rhs) const {
     sanity_check(rhs);
     return backend.get().near_equals(handle, rhs.handle);
@@ -682,6 +678,22 @@ public:
     reshape(get_shape().extend_axis());
   }
   // =============================
+
+  using IterateFunc = std::function<void(const SlowTensorIndex& index)>;
+  void iterate_slow(IterateFunc&& func) const {
+    auto dfs = [&](auto self, SlowTensorIndex cur) -> void {
+      if (cur.size() == get_ndims()) {
+        func(cur);
+        return;
+      }
+      for (uint64_t i=0;i<get_shape()[cur.size()];i++){
+        cur.push_back(i);
+        self(self, cur);
+        cur.pop_back();
+      }
+    };
+    dfs(dfs, {});
+  }
 
   friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
     std::ostringstream ss("");
@@ -750,6 +762,14 @@ protected:
     size_t offset = 0;
     ((offset += index * handle.get_strides()[i++]), ...);
     ASSERT(i == get_ndims(), "tensor at index not matching dimension");
+    return offset;
+  }
+  size_t calculate_offset(const SlowTensorIndex& index) const {
+    ASSERT(index.size() == get_ndims(), "tensor at index not matching dimension");
+    size_t offset = 0;
+    for (int i=0;i<get_ndims();i++){
+      offset += index[i] * handle.get_strides()[i];
+    }
     return offset;
   }
   std::reference_wrapper<Backend> backend;
@@ -828,10 +848,6 @@ public:
   }
   #include "operators/operators.inc"
 
-  bool operator==(const Tensor& rhs) const = delete;
-  bool operator==(const TypedTensor& rhs) const {
-    return Tensor::operator==(rhs);
-  }
   bool near_equals(const Tensor& rhs) const = delete;
   bool near_equals(const TypedTensor& rhs) const {
     return Tensor::near_equals(rhs);
@@ -1048,7 +1064,6 @@ TypedTensor<T> Backend::zeros(Sz... sz) {
 Tensor Backend::make_tensor(Handle handle) { 
   return Tensor(*this, handle); 
 }
-
 
 }
 }
