@@ -5,6 +5,7 @@
 #include "katoml/mlsupport/errors.hpp"
 #include "katoml/mltensor/types.hpp"
 #include <algorithm>
+#include <sstream>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -400,6 +401,21 @@ public:
       auto tensor = device.backend().load(tensor::TensorBuffer(desc, reinterpret_cast<uint8_t*>(data.data()), data.size()));
       params_vec[i].set_tensor(std::move(tensor));
     }
+  }
+
+  void summary(const std::string& filepath) {
+    // FIXME: complete this
+    std::vector<std::string> nodes;
+    std::vector<std::pair<int,int>> adjs;
+    const auto dfs = [&](auto&& self, Layer& cur) -> void {
+      std::stringstream ss;
+      ss << cur.get_name();
+      if (cur.get_type() == LayerType::Input) {
+        ss << ": " << cur.get_input_name();
+      }
+      ss << "\\l";
+      std::vector<std::string> inputs;
+    };
   }
 private:
   void verify_inputs(const InputsMap& inputs) {
