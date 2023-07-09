@@ -5,6 +5,7 @@
 #include <random>
 #include <iostream>
 #include <memory>
+#include <cstring>
 
 #include "core.hpp"
 #include "types.hpp"
