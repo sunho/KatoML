@@ -35,5 +35,7 @@ static inline std::unique_ptr<Device> construct_device() {
   return std::make_unique<Device>(std::move(backend), std::move(engine));
 }
 
+extern std::unique_ptr<Device> default_device;
+
 }
 }

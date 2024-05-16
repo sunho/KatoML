@@ -51,8 +51,8 @@ using AxisArray = std::vector<int>;
 const static AxisArray AllAxis = {MAX_DIM};
 
 class Shape {
-using Array = std::array<int64_t, MAX_DIM>;
 public:
+using Array = std::array<int64_t, MAX_DIM>;
   static constexpr const int64_t Any = 0;
   Shape() = default;
   Shape(size_t ndims) : ndims(ndims) {
@@ -445,6 +445,14 @@ public:
   }
   static inline Constant min() {
     return Constant(ConstantType::Min);
+  }
+  ElementType get_type() const {
+    return std::visit(overloaded{
+    #define ELEMENT_TYPE(tyty, name, enum_name, bytes_size) [](tyty) { return ElementType::enum_name; },
+    #include "element_type.inc"
+    [](auto x) { return ElementType::None; },
+    #undef ELEMENT_TYPE
+    }, val);
   }
 private:
   Constant(ConstantType type) : type(type) {}

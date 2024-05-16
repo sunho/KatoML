@@ -15,3 +15,6 @@ if (ENABLE_TESTS)
   add_subdirectory(Catch2)
   include(Catch)
 endif()
+
+add_subdirectory(pybind11)
+
