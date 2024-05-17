@@ -1,3 +1,4 @@
+#include "katoml/mltensor/types.hpp"
 #include <pybind11/pybind11.h>
 
 #include <katoml/mlcompiler/mlcompiler.hpp>
@@ -9,24 +10,20 @@ namespace py = pybind11;
 
 tensor::Backend& backend = compiler::default_device->backend();
 
-static Tensor create_tensor(Shape shape, ElementType element_type) {
-  return backend.zeros(DataType(element_type, shape));
-}
-
 std::vector<int64_t> tuple_to_vector(const py::tuple& tuple) {
-    std::vector<int64_t> vec(tuple.size());
-    for (size_t i = 0; i < tuple.size(); ++i) {
-        vec[i] = tuple[i].cast<int64_t>();
-    }
-    return vec;
+  std::vector<int64_t> vec(tuple.size());
+  for (size_t i = 0; i < tuple.size(); ++i) {
+    vec[i] = tuple[i].cast<int64_t>();
+  }
+  return vec;
 }
 
 std::vector<int> tuple_to_ivector(const py::tuple& tuple) {
-    std::vector<int> vec(tuple.size());
-    for (size_t i = 0; i < tuple.size(); ++i) {
-        vec[i] = tuple[i].cast<int>();
-    }
-    return vec;
+  std::vector<int> vec(tuple.size());
+  for (size_t i = 0; i < tuple.size(); ++i) {
+    vec[i] = tuple[i].cast<int>();
+  }
+  return vec;
 }
 
 Constant handle_indexing(const Tensor& t, const py::tuple& indices) {
@@ -86,8 +83,8 @@ namespace pybind11::detail {
         value = new Constant(py::cast<int>(src));
         return true;
       } else if (py::isinstance<py::float_>(src)) {
-          value = new Constant(py::cast<float>(src));
-          return true;
+        value = new Constant(py::cast<float>(src));
+        return true;
       } else {
         return false;
       }
@@ -116,15 +113,15 @@ namespace pybind11::detail {
       if (py::isinstance<py::int_>(src)) {
         value = new Shape({py::cast<int>(src)});
         return true;
-      } else if (py::isinstance<py::tuple>(src)) {
+      }
+      if (py::isinstance<py::tuple>(src)) {
         auto vec = tuple_to_vector(py::cast<py::tuple>(src));
         Shape::Array arr{};
         std::copy(vec.begin(), vec.end(), arr.begin());
         value = new Shape(vec.size(), arr);
         return true;
-      } else {
-        return false;
-      }
+      }    
+      return false;
     }
     static handle cast(const Shape& src, return_value_policy policy, handle parent) {
       return base::cast(src, policy, parent);
@@ -132,13 +129,13 @@ namespace pybind11::detail {
   };
 }
 
-#define BIND_NATIVE_OP_COPY(pyname, opr) .def(pyname, [](Tensor &t, Constant c) -> Tensor {\
+#define BIND_CPP_COPY_OP(pyname, opr) .def(pyname, [](Tensor &t, Constant c) -> Tensor {\
   return t.operator opr(c);\
 }).def(pyname, [](Tensor &t, const Tensor& c) -> Tensor {\
   return t.operator opr(c);\
 })
 
-#define BIND_NATIVE_OP(pyname, opr) .def(pyname, [](Tensor &t, Constant c) -> Tensor& {\
+#define BIND_CPP_SELF_OP(pyname, opr) .def(pyname, [](Tensor &t, Constant c) -> Tensor& {\
   return t.operator opr(c);\
 }).def(pyname, [](Tensor &t, const Tensor& c) -> Tensor& {\
   return t.operator opr(c);\
@@ -214,8 +211,10 @@ PYBIND11_MODULE(katoml, m) {
     .def_property("Any", [](py::object &) { return Shape::Any; }, nullptr);
 
   py::class_<katoml::tensor::Tensor>(m, "Tensor")
-    .def(py::init(&create_tensor),
-        py::arg("shape")=Shape({1}), py::arg("element_type")=ElementType::Float32
+    .def(py::init([](Shape shape, ElementType element_type) {
+      return backend.zeros(DataType(element_type, shape));
+      }),
+      py::arg("shape")=Shape({1}), py::arg("element_type")=ElementType::Float32
     )
     .def("__repr__", [](const Tensor& s) {
       std::stringstream ss;
@@ -252,19 +251,19 @@ PYBIND11_MODULE(katoml, m) {
     .def("extend_axis", &katoml::tensor::Tensor::extend_axis)
     .def("near_equals", &katoml::tensor::Tensor::near_equals)
     .def("matmul", &katoml::tensor::Tensor::matmul)
-    BIND_NATIVE_OP_COPY("__add__", +)
-    BIND_NATIVE_OP_COPY("__sub__", -)
-    BIND_NATIVE_OP_COPY("__mul__", *)
-    BIND_NATIVE_OP_COPY("__truediv__", /)
-    BIND_NATIVE_OP_COPY("__lt__", <)
-    BIND_NATIVE_OP_COPY("__le__", <=)
-    BIND_NATIVE_OP_COPY("__gt__", >)
-    BIND_NATIVE_OP_COPY("__ge__", >=)
-    BIND_NATIVE_OP_COPY("__eq__", ==)
-    BIND_NATIVE_OP("__iadd__", +=)
-    BIND_NATIVE_OP("__isub__", -=)
-    BIND_NATIVE_OP("__imul__", *=)
-    BIND_NATIVE_OP("__itruediv__", /=)
+    BIND_CPP_COPY_OP("__add__", +)
+    BIND_CPP_COPY_OP("__sub__", -)
+    BIND_CPP_COPY_OP("__mul__", *)
+    BIND_CPP_COPY_OP("__truediv__", /)
+    BIND_CPP_COPY_OP("__lt__", <)
+    BIND_CPP_COPY_OP("__le__", <=)
+    BIND_CPP_COPY_OP("__gt__", >)
+    BIND_CPP_COPY_OP("__ge__", >=)
+    BIND_CPP_COPY_OP("__eq__", ==)
+    BIND_CPP_SELF_OP("__iadd__", +=)
+    BIND_CPP_SELF_OP("__isub__", -=)
+    BIND_CPP_SELF_OP("__imul__", *=)
+    BIND_CPP_SELF_OP("__itruediv__", /=)
     .def("sum", &katoml::tensor::Tensor::sum)
     .def("mean", &katoml::tensor::Tensor::mean)
     .def("reduce_max", &katoml::tensor::Tensor::reduce_max)

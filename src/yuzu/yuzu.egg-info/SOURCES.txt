@@ -1,0 +1,5 @@
+setup.py
+yuzu.egg-info/PKG-INFO
+yuzu.egg-info/SOURCES.txt
+yuzu.egg-info/dependency_links.txt
+yuzu.egg-info/top_level.txt
